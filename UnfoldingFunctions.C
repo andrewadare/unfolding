@@ -1,3 +1,5 @@
+// NOTE: This code is deprecated. It has been replaced by the UnfoldingUtils source files.
+
 #include "TObject.h"
 #include "TH1.h"
 #include "TH2.h"
