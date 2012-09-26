@@ -13,7 +13,6 @@
 #include "TCanvas.h"
 #include "TLegend.h"
 #include "TRandom3.h"
-//#include "TVirtualFitter.h"
 #include "Math/Minimizer.h"
 #include "Math/Factory.h"
 #include "Math/Functor.h"

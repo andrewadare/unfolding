@@ -17,7 +17,7 @@ TObjArray* statObjs = new TObjArray();
 
 TLatex lt;
 
-void UnfoldingExample()
+void ShawExample()
 {
   gStyle->SetOptStat(0);
   lt.SetNDC();
@@ -125,6 +125,6 @@ void LoadLibs()
 {
   if (gSystem->Getenv("TMPDIR"))
     gSystem->SetBuildDir(gSystem->Getenv("TMPDIR"));
+  gROOT->LoadMacro("UtilFns.C+g");
   gROOT->LoadMacro("UnfoldingUtils.C+g");
-  gROOT->LoadMacro("IOUtilFns.C+g");
 }

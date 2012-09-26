@@ -147,7 +147,7 @@ int Load()
 {
   if (gSystem->Getenv("TMPDIR"))
     gSystem->SetBuildDir(gSystem->Getenv("TMPDIR"));
-  gROOT->LoadMacro("IOUtilFns.C");
+  gROOT->LoadMacro("UtilFns.C+");
   gROOT->LoadMacro("UnfoldingUtils.C+g");
   return 0;
 }
