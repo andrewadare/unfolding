@@ -242,9 +242,9 @@ UnfoldingUtils::SVDAnalysis(TH2* hA, TH1* hb, TObjArray* output)
   TH1D* hUb    = new TH1D("hUb", "|u^{T}_{i}*b| ", mU, 0, mU);
   TH1D* hUbSig = new TH1D("hUbSig", "|u^{T}_{i}*b| / #sigma_{i} ", mU, 0, mU);
 
-  SetHistProps(hSigma, kBlack, 0, kBlack, kFullCircle, 1.0);
-  SetHistProps(hUb, kBlue, 0, kBlue, kFullSquare, 1.0);
-  SetHistProps(hUbSig, kRed, 0, kRed, kOpenSquare, 1.0);
+  SetTH1Props(hSigma, kBlack, 0, kBlack, kFullCircle, 1.0);
+  SetTH1Props(hUb, kBlue, 0, kBlue, kFullSquare, 1.0);
+  SetTH1Props(hUbSig, kRed, 0, kRed, kOpenSquare, 1.0);
 
   output->Add(hSigma);
   output->Add(hUb);
@@ -336,8 +336,9 @@ UnfoldingUtils::ShawSystem(const int n, double noise)
   TObjArray* arr = new TObjArray();
   TMatrixD A(n,n);
   TVectorD x(n);
-  TVectorD b(n);
-  ShawSystem(n, A, x, b);
+  TVectorD b_ideal(n);
+  ShawSystem(n, A, x, b_ideal, 0.);
+  TVectorD b(b_ideal);
 
   // Add Gaussian white noise to b
   TRandom3 r3;
@@ -346,17 +347,15 @@ UnfoldingUtils::ShawSystem(const int n, double noise)
   TH2D* hA = Matrix2Hist(A, "Shaw_A",0.,1.,0.,1.);
   TH1D* hx = Vec2Hist(x, 0., 1., "Shaw_x","Truth x fn.");
   TH1D* hb = Vec2Hist(b, 0., 1., "Shaw_b","Meas. b fn.");
- 
+  TH1D* hi = Vec2Hist(b_ideal, 0., 1., "Shaw_b_ideal","Meas. b fn.");
+
   for (int j=0; j<n; j++)
     hb->SetBinError(j+1, noise);
   
   arr->Add(hA);
   arr->Add(hx);
   arr->Add(hb);
-
-  // arr->Add(&A);
-  // arr->Add(&x);
-  // arr->Add(&b);
+  arr->Add(hi);
 
   return arr;
 }
@@ -530,43 +529,6 @@ UnfoldingUtils::RegChi2(const double *pars)
   return chi2;
 }
 
-void
-UnfoldingUtils::ModifiedChiSqFCN(Int_t& /*npar*/, 
-				 Double_t* /*grad*/, 
-				 Double_t& chi2, 
-				 Double_t *pars,
-				 Int_t /*flag*/)
-{
-  /*
-  See http://root.cern.ch/root/html/TMinuit.html#TMinuit:Eval
-  Input parameters:
-    npar:    not used
-    pars:    array of (constant and variable) parameters
-    flag:    not used
-    grad:    not used
-  Output parameters:
-    chi2:    The calculated function value.
-    grad:    The (optional) vector of first derivatives.
-  */
-  
-  // Fit parameters vector
-  TVectorD x(fN);
-  for (int i=0; i<fN; i++)
-    x(i) = pars[i]*pars[i];
-  
-  // Unmodified chi^2 (Ax-b)'*B*(Ax-b) (Hocker eq. (30))
-  // TODO: add option to class whether to use A, Ahat, Atilde, etc.
-  TVectorD resid = fMatAhat*x - fVecb;
-  resid *= fMatB;
-  chi2 = resid*resid;
-  
-  // Additive chi^2 modifier (reg. penalty value)  
-  double mod = fRegWeight*SmoothingNorm(x, fRegType);
-  
-  chi2 += mod;
-  return;
-}
-
 TH1D*
 UnfoldingUtils::UnfoldChiSqMin(TH2* hA, TH1* hb, TH1* hXStart, TH1* hEff, TH1* hXini, 
 			       double regWt, TObjArray* /*output*/, TString /*opt*/)
@@ -600,24 +562,11 @@ UnfoldingUtils::UnfoldChiSqMin(TH2* hA, TH1* hb, TH1* hXStart, TH1* hEff, TH1* h
     }
   }
 
-  // Provide option to normalize hXStart here?
+  // TODO: Provide option to normalize hXStart here?
   //
 
-  // Extract min val from ICs
+  // TODO: Extract min val from ICs?
   // 
-
-  /*  
-  // Args to pass to TVirtualFitter::ExecuteCommand(char* cmd, double* args, int nargs).
-  double tminArgs[100] = {0};
-  int nargs = 1;
-  tminArgs[0] = 1.0; // strategy
-  TObject* unusedObj = 0;
-  TVirtualFitter *tmin = TVirtualFitter::Fitter(unusedObj, nPars);
-  tmin->SetFCN(ModifiedChiSqFCN);
-  tmin->SetPrecision(1e-6);
-  tmin->SetMaxIterations(1000000);
-  tmin->ExecuteCommand("SET STRATEGY", tminArgs, nargs);
-  */
 
   // Set up the chi^2 minimizer
   ROOT::Math::Minimizer* min = 
@@ -631,7 +580,6 @@ UnfoldingUtils::UnfoldChiSqMin(TH2* hA, TH1* hb, TH1* hXStart, TH1* hEff, TH1* h
   // Initialize tmx array and pass to minimizer.
   double* tmx = new double[nBinsT+1]; // extra for overflow (?????)
   double stepSize = 0.1;
-  //double verr=0, vlow=0, vhigh=0;
   for (int i=0; i<nBinsT; i++) {
     tmx[i] = hXStart->GetBinContent(i+1);
 
@@ -639,36 +587,23 @@ UnfoldingUtils::UnfoldChiSqMin(TH2* hA, TH1* hb, TH1* hXStart, TH1* hEff, TH1* h
       tmx[i] /= hXini->GetBinContent(i+1);
     
     // Require all parameters to have a minimum positive value
-    //    verr = 0.1;
     if (tmx[i] < 0) {
       tmx[i] = -tmx[i];
-      //      verr = 0; // This fixes the parameter
     }
-    
-    // Minimize squared values for positivity.
-    // Prepare here; square afterward.
-    //    tmx[i] = TMath::Sqrt(TMath::Abs(tmx[i]));
 
-    //    tmin->SetParameter(i, Form("param%d", i), tmx[i], verr, vlow, vhigh);
     min->SetVariable(i, Form("xpar%d",i), tmx[i], stepSize);
 
-    // Add case for inefficiency here...
+    // TODO: Add case for inefficiency here?
     // 
   }
-
-  // // Run the fitter to update tmx[]
-  // tminArgs[0] = tmin->GetMaxIterations();
-  // Int_t status = tmin->ExecuteCommand("MIGRAD", tminArgs, 1);
+  
   for (int i=0; i<nPars; i++) Printf("%g", tmx[i]);
   Info("UnfoldingUtils::UnfoldChiSqMin()", "Initial (regularized) chi squared = %g", RegChi2(tmx));
   min->Minimize(); 
-
+  
   for (int i=0; i<nPars; i++) {
-    //    tmx[i] = tmin->GetParameter(i);
     tmx[i] = min->X()[i];
-    //    double val = tmx[i]*tmx[i];
     double val = tmx[i];
-    //    double err = 2*tmin->GetParError(i)*tmx[i];
     double err = 2*min->Errors()[i]*tmx[i];
     if (hEff) {
       double e = hEff->GetBinContent(i+1);
@@ -799,11 +734,11 @@ UnfoldingUtils::UnfoldSVD(TH2* hA, TH1* hb, TH1* hXini,
     TH1D* hl = Vec2Hist(dlam,  0., nd, Form("hl%d",id), Form("|d^{(#lambda)}_{i}|, #lambda = %g ",lambda));
     TH1D* hw = Vec2Hist(w,     0., nd, Form("hw%d",id), Form("w^{#lambda = %g} ",lambda));
     TH1D* ht = Vec2Hist(tf,    0., nd, Form("ht%d",id), Form("s_{i}^{2}/(s_{i}^{2}+#lambda^{2}), #lambda = %g ",lambda));
-    SetHistProps(hs, kBlack, 0, kBlack, kFullCircle, 1.0);
-    SetHistProps(hd, kBlue,  0, kBlue,  kFullSquare, 1.0);
-    SetHistProps(hl, kMagenta+1,  0, kMagenta+1,  kOpenSquare, 1.0);
-    SetHistProps(hw, kCyan+2,0, kCyan+2,kOpenCircle, 1.0);
-    SetHistProps(ht, kBlack, 0, kBlack, kOpenCircle, 1.0);
+    SetTH1Props(hs, kBlack, 0, kBlack, kFullCircle, 1.0);
+    SetTH1Props(hd, kBlue,  0, kBlue,  kFullSquare, 1.0);
+    SetTH1Props(hl, kMagenta+1,  0, kMagenta+1,  kOpenSquare, 1.0);
+    SetTH1Props(hw, kCyan+2,0, kCyan+2,kOpenCircle, 1.0);
+    SetTH1Props(ht, kBlack, 0, kBlack, kOpenCircle, 1.0);
 
     // Covariance matrix of solution and its inverse
     TH2D* hWcov = Matrix2Hist(Wcov, Form("hWcov%d",id), 0, nd, 0, nd);
@@ -1501,7 +1436,7 @@ UnfoldingUtils::Null(TMatrixD& A)
 }
 
 void 
-UnfoldingUtils::SetHistProps(TH1* h,
+UnfoldingUtils::SetTH1Props(TH1* h,
 			     Int_t linecolor,
 			     Int_t fillcolor,
 			     Int_t markercolor,

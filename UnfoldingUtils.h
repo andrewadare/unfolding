@@ -50,13 +50,13 @@ class UnfoldingUtils
   void LTSolve(TVectorD& result, const TMatrixD& L, const TVectorD& y);
   void LSolve(TVectorD& result, const TMatrixD& L, const TVectorD& y, 
 	      const TMatrixD& W, const TMatrixD& T);
-  void SetHistProps(TH1* h,
-		    Int_t linecolor,
-		    Int_t fillcolor,
-		    Int_t markercolor,
-		    Int_t markerstyle,
-		    Double_t markersize); 
-
+  void SetTH1Props(TH1* h,
+		   Int_t linecolor,
+		   Int_t fillcolor,
+		   Int_t markercolor,
+		   Int_t markerstyle,
+		   Double_t markersize); 
+  
   // Test problems
   // Shaw: sets up discretized n x n kernel A, as
   // well as true and measured vectors x and b (both size n).
