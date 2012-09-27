@@ -1,5 +1,6 @@
 #include "UnfoldingUtils.h"
 
+#if !defined(__CINT__) || defined(__MAKECINT__)
 #include "TROOT.h"
 #include "TSystem.h"
 #include "TH1.h"
@@ -16,8 +17,9 @@
 #include "Math/Minimizer.h"
 #include "Math/Factory.h"
 #include "Math/Functor.h"
-
 #include <iostream>
+#endif
+
 using std::cout;
 using std::endl;
 
@@ -596,9 +598,9 @@ UnfoldingUtils::UnfoldChiSqMin(TH2* hA, TH1* hb, TH1* hXStart, TH1* hEff, TH1* h
     // TODO: Add case for inefficiency here?
     // 
   }
-  
-  for (int i=0; i<nPars; i++) Printf("%g", tmx[i]);
-  Info("UnfoldingUtils::UnfoldChiSqMin()", "Initial (regularized) chi squared = %g", RegChi2(tmx));
+
+  Info("UnfoldingUtils::UnfoldChiSqMin()", 
+       "Initial (regularized) chi squared = %g", RegChi2(tmx));
   min->Minimize(); 
   
   for (int i=0; i<nPars; i++) {
@@ -618,10 +620,11 @@ UnfoldingUtils::UnfoldChiSqMin(TH2* hA, TH1* hb, TH1* hXStart, TH1* hEff, TH1* h
   if (hXini)
     hUnf->Multiply(hXini);
   
-  Info("UnfoldingUtils::UnfoldChiSqMin()", "Final (regularized) chi squared = %g, curvature = %g", RegChi2(tmx), Curvature(x));
+  Info("UnfoldingUtils::UnfoldChiSqMin()", 
+       "Final (regularized) chi squared = %g, curvature = %g",
+       RegChi2(tmx), Curvature(x));
   return hUnf;
 }
-
 
 TH1D* 
 UnfoldingUtils::UnfoldSVD(TH2* hA, TH1* hb, TH1* hXini, 

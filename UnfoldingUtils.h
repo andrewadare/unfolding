@@ -92,19 +92,10 @@ class UnfoldingUtils
   TH1D* UnfoldChiSqMin(TH2* hA, TH1* hb, TH1* hXStart, TH1* hEff, TH1* hXini, 
 		       double regWt, TObjArray* output, TString opt="");
 
-  // For chi squared minimization method
+  // Support functions for chi squared minimization method
   double SmoothingNorm(TVectorD& x, int regtype);
   double Curvature(TVectorD& x);
-
-
   double RegChi2(const double *pars);
-
-  // Objective minimization FCN for TMinuit
-  void ModifiedChiSqFCN(Int_t& /*npars*/,
-			Double_t* /*grad*/, 
-			Double_t& chi2, 
-			Double_t *pars,
-			Int_t /*flag*/);  
   
   // Analysis methods
   void  SVDAnalysis(TH2* hA, TH1* hb, TObjArray* output);

@@ -125,6 +125,6 @@ void LoadLibs()
 {
   if (gSystem->Getenv("TMPDIR"))
     gSystem->SetBuildDir(gSystem->Getenv("TMPDIR"));
-  gROOT->LoadMacro("UtilFns.C+g");
+  gROOT->LoadMacro("UtilFns.C");
   gROOT->LoadMacro("UnfoldingUtils.C+g");
 }
