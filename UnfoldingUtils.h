@@ -18,11 +18,9 @@ class UnfoldingUtils
 
   // Class administration
   UnfoldingUtils();
-  UnfoldingUtils(TH2* hAhat, TH1* hMeas, TH1* hXini=0, TH1* hXtrue=0);
+  UnfoldingUtils(TH2D* hA, TH1D* hMeas, TH2D* hMeasCov=0, TH1D* hXini=0, TH1D* hXtrue=0, TH1D* hEff=0);
   virtual ~UnfoldingUtils() {}
-  int Setup(TH2* hAhat, TH1* hMeas, TH1* hXini=0, TH1* hTrue=0);
-  int Setup(TMatrixD& Ahat, TVectorD& b, TVectorD& xtrue,
-	    double mx1, double mx2, double tx1, double tx2);
+  bool BinningOk();
   
   // Conversion methods
   TVectorD Hist2Vec(const TH1* h);
@@ -35,6 +33,7 @@ class UnfoldingUtils
   TH2D* BandedDiagonalMatrix(TH1* hDpt, const int nMeas, const int nTrue);
   
   // Utility methods
+  void NormalizeXSum(TH2* hA, TH1* hN=0); // Modify hA in-place
   TH2* TH2Product(TH2* hA, TH2* hB, TString name);
   TH2D* TH2Sub(TH2* h, int bx1, int bx2, int by1, int by2, TString name);
   TMatrixD MoorePenroseInverse(TMatrixD& A, double tol = 1e-15);
@@ -85,8 +84,9 @@ class UnfoldingUtils
 			    const TH1* hXini = 0);
 
   // opt can be "BC0" or "BCR" for zero or reflective boundary conditions.
-  TH1D* UnfoldSVD(TH2* hA, TH1* hb, TH1* hXini, double lambda, 
-		  TObjArray* output=0, TString opt="BCR");
+  TH1D* UnfoldSVD(double lambda, TObjArray* output=0, TString opt="");
+  /* TH1D* UnfoldSVD(TH2* hA, TH1* hb, TH1* hXini, double lambda,  */
+  /* 		  TObjArray* output=0, TString opt="BCR"); */
   
 
   TH1D* UnfoldChiSqMin(TH2* hA, TH1* hb, TH1* hXStart, TH1* hEff, TH1* hXini, 
@@ -98,10 +98,9 @@ class UnfoldingUtils
   double RegChi2(const double *pars);
   
   // Analysis methods
-  void  SVDAnalysis(TH2* hA, TH1* hb, TObjArray* output);
+  void  SVDAnalysis(TH2* hA, TH1* hb, TObjArray* output, TString opt="");
   TCanvas* DrawSVDPlot(TObjArray* svdhists, double ymin, double ymax);
-  TCanvas* DrawGSVDPlot(TObjArray* svdhists, double ymin, double ymax);
-  void ComputeRescaledSystem();
+  TCanvas* DrawGSVDPlot(TObjArray* svdhists, double ymin, double ymax, TString opt="");
   
   // Set and get methods  
   void SetTrueRange(double x1, double x2);
@@ -123,7 +122,7 @@ class UnfoldingUtils
   TMatrixD GetbCovariance() const {return fMatB;}      // Error matrix of b
   TVectorD Getb()           const {return fVecb;}      // vector of measured data points
   TVectorD GetbTilde()      const {return fVecbTilde;} // b, scaled by its error
-  TVectorD GetxTrue()       const {return fVecxTrue;}  // b, scaled by its error
+  TVectorD GetxTrue()       const {return fVecXtrue;}  // b, scaled by its error
   TH2D* GetAProbHist() 	    const {return fHistAProb;}
   TH2D* GetAHist()          const {return fHistA;}
   TH2D* GetATildeHist()     const {return fHistATilde;}
@@ -145,9 +144,10 @@ class UnfoldingUtils
   enum RegType{kNoReg,    // add zero to chi squared
 	       k2Norm,    // L_2 norm ||x||_2 = sqrt(x*x).
 	       kTotCurv}; // From 2nd derivative
-	       
-  
+ 
  protected:
+  void ComputeRescaledSystem();
+
   Int_t fM, fN;
   Double_t fMeasX1, fMeasX2, fTrueX1, fTrueX2;
   Double_t fRegWeight;   // For chi^2 method
@@ -155,19 +155,21 @@ class UnfoldingUtils
   TH2D* fHistAProb;      // aka Ahat
   TH2D* fHistA;
   TH2D* fHistATilde;
-  TH2D* fHistMeasCov;
   TH1D* fHistMeas;
+  TH2D* fHistMeasCov;
   TH1D* fHistbTilde;
   TH1D* fHistXini;
   TH1D* fHistXtrue;
-
+  TH1D* fHistEff;
+  
   TMatrixD fMatA;
   TMatrixD fMatAhat;
   TMatrixD fMatATilde;
   TMatrixD fMatB;
   TVectorD fVecb;
   TVectorD fVecbTilde;
-  TVectorD fVecxTrue;
+  TVectorD fVecXtrue;
+  TVectorD fVecXini;
 
   ClassDef(UnfoldingUtils, 1);
 };

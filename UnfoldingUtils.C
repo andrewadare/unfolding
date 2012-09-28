@@ -13,6 +13,7 @@
 #include "TString.h"
 #include "TCanvas.h"
 #include "TLegend.h"
+#include "TLine.h"
 #include "TRandom3.h"
 #include "Math/Minimizer.h"
 #include "Math/Factory.h"
@@ -28,134 +29,166 @@ ClassImp(UnfoldingUtils);
 UnfoldingUtils::UnfoldingUtils() : 
   fM(0),
   fN(0),
-  fMeasX1(0),
-  fMeasX2(0),
-  fTrueX1(0),
-  fTrueX2(0),
+  fMeasX1(0.),
+  fMeasX2(0.),
+  fTrueX1(0.),
+  fTrueX2(0.),
   fRegWeight(0.),
-  fRegType(kNoReg)
+  fRegType(kNoReg),
+  fHistAProb(0),
+  fHistA(0),
+  fHistATilde(0),
+  fHistMeas(0),
+  fHistMeasCov(0),
+  fHistbTilde(0),
+  fHistXini(0),
+  fHistXtrue(0),
+  fHistEff(0)
 {
 }
 
-UnfoldingUtils::UnfoldingUtils(TH2* hAhat, TH1* hMeas, TH1* hXini, TH1* hXtrue) : 
+UnfoldingUtils::UnfoldingUtils(TH2D* hA, 
+			       TH1D* hMeas, 
+			       TH2D* hMeasCov, 
+			       TH1D* hXini, 
+			       TH1D* hXtrue, 
+			       TH1D* hEff) :
   fM(0),
   fN(0),
-  fMeasX1(0),
-  fMeasX2(0),
-  fTrueX1(0),
-  fTrueX2(0),
-  fRegWeight(0.0),
-  fRegType(kNoReg)
+  fMeasX1(0.),
+  fMeasX2(0.),
+  fTrueX1(0.),
+  fTrueX2(0.),
+  fRegWeight(0.),
+  fRegType(kNoReg),
+  fHistAProb(0),
+  fHistA(hA),
+  fHistATilde(0),
+  fHistMeas(hMeas),
+  fHistMeasCov(hMeasCov),
+  fHistbTilde(0),
+  fHistXini(hXini),
+  fHistXtrue(hXtrue),
+  fHistEff(hEff)
 {
-  Setup(hAhat, hMeas, hXini, hXtrue);
+  fM = fHistA->GetNbinsX();    // Measured bins (rows)
+  fN = fHistA->GetNbinsY();    // True/gen bins (cols)
+  fTrueX1 = fHistA->GetYaxis()->GetXmin();
+  fTrueX2 = fHistA->GetYaxis()->GetXmax();
+  fMeasX1 = fHistA->GetXaxis()->GetXmin();
+  fMeasX2 = fHistA->GetXaxis()->GetXmax();
+
+  if (!BinningOk()) {
+    Error("UnfoldingUtils::UnfoldingUtils()", "Binning problem");
+    gSystem->Exit(-1);
+  }
+
+  ComputeRescaledSystem();
 }
 
-int
-UnfoldingUtils::Setup(TMatrixD& Ahat, TVectorD& b, TVectorD& xtrue, 
-		      double mx1, double mx2, double tx1, double tx2)
+void 
+UnfoldingUtils::ComputeRescaledSystem()
 {
-  int status = 0; // If nonzero, problems occurred.
-  fM = Ahat.GetNrows();
-  fN = Ahat.GetNcols();
-  fMatAhat.ResizeTo(Ahat);
-  fMatAhat = Ahat;
-  fVecb.ResizeTo(fM);
-  fVecb = b;
-  fVecxTrue.ResizeTo(fN);
-  fVecxTrue = xtrue;
 
-  fTrueX1 = tx1;
-  fTrueX2 = tx2;
-  fMeasX1 = mx1;
-  fMeasX2 = mx2;
-
-  // Check for binning incompatibilities
-  int nMeas = b.GetNoElements();
-  if (nMeas != fM) {
-    gROOT->Warning("", "Meas bin mismatch: b %d, m %d", nMeas, fM);
-    status++;
-  }
-  int nTrue = xtrue.GetNoElements();
-  if (nTrue != fN) {
-    gROOT->Warning("", "True bin mismatch: xtrue %d, n %d", nTrue, fN);
-    status++;
-  }
-  
-  return status;
-}
-
-int 
-UnfoldingUtils::Setup(TH2* hAhat, TH1* hMeas, TH1* hXini, TH1* hXtrue)
-{
-  int status = 0; // If nonzero, problems occurred.
-  fHistAProb = (TH2D*)hAhat->Clone("fHistAProb");
-  fHistMeas = (TH1D*)hMeas->Clone("fHistMeas");
-  
-  fM = fHistAProb->GetNbinsX();    // Measured bins (rows)
-  fN = fHistAProb->GetNbinsY();    // True/gen bins (cols)
-  fTrueX1 = fHistAProb->GetYaxis()->GetXmin();
-  fTrueX2 = fHistAProb->GetYaxis()->GetXmax();
-  fMeasX1 = fHistAProb->GetXaxis()->GetXmin();
-  fMeasX2 = fHistAProb->GetXaxis()->GetXmax();
-
+  // Matrix and vector members
   fMatA.ResizeTo(fM,fN);
   fMatAhat.ResizeTo(fM,fN);
   fMatATilde.ResizeTo(fM,fN);
   fMatB.ResizeTo(fM,fM);
-
   fVecb.ResizeTo(fM);
   fVecbTilde.ResizeTo(fM);
+  fVecXini.ResizeTo(fN);
+  fVecXtrue.ResizeTo(fN);
 
+  fMatA = Hist2Matrix(fHistA);
+  fVecb = Hist2Vec(fHistMeas);
+
+  if (fHistXini)
+    fVecXini = Hist2Vec(fHistXini);
+  else
+    for (int j=0; j<fN; j++)
+      fVecXini(j) = 1.0;
+  
+  if (fHistXtrue)
+    fVecXtrue = Hist2Vec(fHistXtrue);
+
+  // Probability matrix Ahat
+  if (!fHistAProb) {
+    fHistAProb = (TH2D*) fHistA->Clone("fHistAProb");
+    NormalizeXSum(fHistAProb, (fHistEff) ? fHistEff : 0);
+  }
+  fMatAhat = Hist2Matrix(fHistAProb);
+
+  // Data uncertainty
+  TVectorD eb(fM);  
+  for (int i=0; i<fM; i++)
+    eb(i) = fHistMeas->GetBinError(i+1);
+  
+  // Data covariance matrix
+  if (fHistMeasCov)
+    fMatB = Hist2Matrix(fHistMeasCov);
+  else
+    for (int i=0; i<fM; i++) {
+      fMatB(i,i) = eb(i)*eb(i);
+    }
+    
+  // Create rescaled (~) quantities
+  if (0) {
+    // Hocker eq. (33)
+    // Decompose B = QRQ' where R_{ij} = r_i^2 \delta_{ij}
+    TDecompSVD QRQT(fMatB); 
+    TMatrixD Q = QRQT.GetU(); // Q=U=V if B is symm. & pos.-semidef
+    TVectorD rsq = QRQT.GetSig(); // R(i,i) \equiv rsq(i)
+    
+    // Hocker eq. (34)
+    fMatATilde = Q*fMatA;
+    for (int i=0;i<fM;i++) // row index 
+      for (int j=0;j<fN;j++) // col index
+	fMatATilde(i,j) *= 1./TMath::Sqrt(rsq(i));
+    fVecbTilde = Q*fVecb;
+    for (int i=0;i<fM;i++)
+      fVecbTilde(i) *= 1./TMath::Sqrt(rsq(i));
+  }
+  
+  // For now, assume uncorrelated errors in b
+
+  fMatATilde = DivColsByVector(fMatA, eb);
+  fHistATilde = Matrix2Hist(fMatATilde, "fHistATilde",
+			    fMeasX1,fMeasX2,fTrueX1,fTrueX2);
+  fVecbTilde = ElemDiv(fVecb, eb);
+  fHistbTilde = Vec2Hist(fVecbTilde, fMeasX1, fMeasX2, 
+			 "fHistbTilde", "Scaled measured distribution");
+  for (int i=0;i<fM;i++)
+    fHistbTilde->SetBinError(i+1, 1.0);
+  return;
+}
+
+bool
+UnfoldingUtils::BinningOk()
+{
   // Check for binning incompatibilities
-  int nMeas = hMeas->GetNbinsX(); // Must equal fM
+  bool isok = true;
+  
+  int nMeas = fHistMeas->GetNbinsX(); // Must equal fM
   if (nMeas != fM) {
     gROOT->Warning("", "Meas. bin mismatch: hMeas %d, TH2 (x-axis) %d", nMeas, fM);
-    status++;
+    isok = false;
   }
-  if (hXini) {
-    fHistXini = (TH1D*)hXini->Clone("fHistXini");
-    int nXini = hXini->GetNbinsX(); // Must equal fN
+  if (fHistXini) {
+    int nXini = fHistXini->GetNbinsX(); // Must equal fN
     if (nXini != fN) {
       gROOT->Warning("", "True bin mismatch: x^ini %d, TH2 (y-axis) %d", nXini, fN);
-      status++;
+      isok = false;
     }
   }
-  if (hXtrue) {
-    fHistXtrue = (TH1D*)hXtrue->Clone("fHistXtrue");
-    int nXtrue = hXtrue->GetNbinsX(); // Must equal fN
+  if (fHistXtrue) {
+    int nXtrue = fHistXtrue->GetNbinsX(); // Must equal fN
     if (nXtrue != fN) {
       gROOT->Warning("", "True bin mismatch: hXtrue %d, TH2 (y-axis) %d", nXtrue, fN);
-      status++;
+      isok = false;
     }
   }
-  
-  // "Probability" Response matrix (columns sum to 1.0)
-  fMatAhat = Hist2Matrix(fHistAProb);
-  
-  // Copy measured hist data points to b
-  for (int i=0;i<fM;i++) 
-    fVecb(i)=fHistMeas->GetBinContent(i+1);
-  
-  // Compute B = cov(b) assuming only indep. stat. err. at this time
-  // TODO: change Setup to optionally pass in a covariance
-  // matrix. Then if one is not passed in, it can be computed here by
-  // default.
-  fMatB.UnitMatrix();
-  for (int i=0;i<fM;i++) 
-    fMatB(i,i) *= fHistMeas->GetBinError(i+1)*fHistMeas->GetBinError(i+1);
-
-  fHistMeasCov = Matrix2Hist(fMatB, "fHistMeasCov",fMeasX1,fMeasX2,fMeasX1,fMeasX2);
-
-  // Compute A, Atilde, and btilde if xini was provided
-  if (hXini) {
-    ComputeRescaledSystem();
-  }
-
-  if (status)
-    gROOT->Warning("", "%d problem%s in UnfoldingUtils::Setup()", 
-		   status, status>1 ? "s" : "");
-  
-  return status;
+  return isok;
 }
 
 void 
@@ -172,6 +205,7 @@ UnfoldingUtils::SetMeasRange(double x1, double x2)
   fMeasX2 = x2;
 }
 
+/*
 void 
 UnfoldingUtils::ComputeRescaledSystem()
 {
@@ -185,22 +219,7 @@ UnfoldingUtils::ComputeRescaledSystem()
  
   fHistA = Matrix2Hist(fMatA, "fHistA",fMeasX1,fMeasX2,fTrueX1,fTrueX2);
 
-  // Hocker eq. (33)
-  // Decompose B = QRQ' where R_{ij} = r_i^2 \delta_{ij}
-  TDecompSVD QRQT(fMatB); 
-  TMatrixD Q = QRQT.GetU(); // Q=U=V if B is symm. & pos.-semidef
-  TVectorD rsq = QRQT.GetSig(); // R(i,i) \equiv rsq(i)
 
-  if (0) {
-    // Hocker eq. (34)
-    fMatATilde = Q*fMatA;
-    for (int i=0;i<fM;i++) // row index 
-      for (int j=0;j<fN;j++) // col index
-	fMatATilde(i,j) *= 1./TMath::Sqrt(rsq(i));
-    fVecbTilde = Q*fVecb;
-    for (int i=0;i<fM;i++)
-      fVecbTilde(i) *= 1./TMath::Sqrt(rsq(i));
-  }
   
   // Simplified scaling: assume for now cov(b) is diagonal.
   fMatATilde = fMatA;
@@ -208,64 +227,64 @@ UnfoldingUtils::ComputeRescaledSystem()
     for (int j=0;j<fN;j++) // col index
       fMatATilde(i,j) *= 1./TMath::Sqrt(fMatB(i,i));
 
-  fHistATilde = Matrix2Hist(fMatATilde, "fHistATilde",
-			    fMeasX1,fMeasX2,fTrueX1,fTrueX2);
-  fVecbTilde = fVecb;
-  for (int i=0;i<fM;i++)
-    fVecbTilde(i) *= 1./TMath::Sqrt(fMatB(i,i));
-  
-  fHistbTilde = Vec2Hist(fVecbTilde, fMeasX1, fMeasX2, 
-			 "fHistbTilde", "Scaled measured distribution");
 }
+*/
 
 void 
-UnfoldingUtils::SVDAnalysis(TH2* hA, TH1* hb, TObjArray* output)
+UnfoldingUtils::SVDAnalysis(TH2* hA, TH1* hb, TObjArray* output, TString opt)
 {
   // Decompose A as U*Sigma*V' and study the components. If A is m x
   // n, then U is a column-orthogonal m x n matrix, Sigma is a
-  // diagonal n x n matrix (represented below as a vector), and V is
+  // diagonal n x n matrix (stored as a vector), and V is
   // a column-orthonormal n x n matrix (V'*V = 1).
 
-  TMatrixD A = Hist2Matrix(hA);
-  TVectorD b = Hist2Vec(hb);
+  static int id = 0; id++;
 
+  // Use stored members
+  TMatrixD A = fMatA;
+  TVectorD b = fVecb;
+  
+  // Or, use passed-in histograms
+  if (hA) A = Hist2Matrix(hA);
+  if (hb) b = Hist2Vec(hb);
+  
   TDecompSVD decomp(A);
-  TVectorD sigma_vec = decomp.GetSig();
-  TMatrixD U = decomp.GetU();
-  TMatrixD VT = decomp.GetV(); VT.T();
-  TMatrixD UT = U; U.T();
-  int nvals = sigma_vec.GetNoElements();
-  int mU = U.GetNrows(), nU = U.GetNcols(), 
-    mVT = VT.GetNrows(), nVT = VT.GetNcols();
-  Printf("A (%d x %d) = U (%d x %d) * Sigma (%d x %d) * V^T (%d x %d)", 
-	 A.GetNrows(), A.GetNcols(), mU, nU, nvals, nvals, mVT, nVT);
+  TVectorD sig = decomp.GetSig();
+  TMatrixD UT  = decomp.GetU(); UT.T();
+  int ns = sig.GetNoElements();
 
-  TH1D* hSigma = Vec2Hist(sigma_vec, 0., (double)nvals, "hSigma", "#sigma_{i} ");
-  TH1D* hUb    = new TH1D("hUb", "|u^{T}_{i}*b| ", mU, 0, mU);
-  TH1D* hUbSig = new TH1D("hUbSig", "|u^{T}_{i}*b| / #sigma_{i} ", mU, 0, mU);
+  // int mU = U.GetNrows(), nU = U.GetNcols(), 
+  //   mVT = VT.GetNrows(), nVT = VT.GetNcols();
+  // Printf("A (%d x %d) = U (%d x %d) * Sigma (%d x %d) * V^T (%d x %d)", 
+  // 	 A.GetNrows(), A.GetNcols(), mU, nU, nvals, nvals, mVT, nVT);
 
-  SetTH1Props(hSigma, kBlack, 0, kBlack, kFullCircle, 1.0);
-  SetTH1Props(hUb, kBlue, 0, kBlue, kFullSquare, 1.0);
-  SetTH1Props(hUbSig, kRed, 0, kRed, kOpenSquare, 1.0);
+  TVectorD utb = UT*b;
+  for (int i=0; i<ns; i++) 
+    utb(i) = TMath::Abs(utb(i)); 
+  TVectorD svc = ElemDiv(utb, sig); // SVD expansion coefficients (||)
+  
+  TH1D *hsig=0, *hutb=0, *hsvc=0, *hui=0;
+  hsig = Vec2Hist(sig, 0., ns, Form("hsig%d",id), "#sigma_{i} ");
+  hutb = Vec2Hist(utb, 0., ns, Form("hutb%d",id), "|u^{T}_{i}#upointb| ");
+  hsvc = Vec2Hist(svc, 0., ns, Form("hsvc%d",id), "|u^{T}_{i}#upointb| / #sigma_{i} ");
 
-  output->Add(hSigma);
-  output->Add(hUb);
-  output->Add(hUbSig);
+  SetTH1Props(hsig, kBlack, 0, kBlack, kFullCircle, 1.0);
+  SetTH1Props(hutb, kBlue, 0, kBlue, kFullSquare, 1.0);
+  SetTH1Props(hsvc, kRed, 0, kRed, kOpenSquare, 1.0);
 
-  for (int i=0; i<nU; i++) {
-    TVectorD ui = TMatrixDColumn(U, i);
-    TH1D* hui = Vec2Hist(ui, 0., (double)mU, Form("SV_u_%d",i), Form("SV_u_{%d}",i));
-    output->Add(hui);
-    
-    // |u'_i*b|
-    TVectorD uTi = TMatrixDColumn(UT, i);
-    double val = TMath::Abs(uTi*b);
-    double sig = hSigma->GetBinContent(i+1);
-    double r = sig ? val/sig : 0.;
-    hUb->SetBinContent(i+1, val);
-    hUbSig->SetBinContent(i+1, r);
+  output->Add(hsig);
+  output->Add(hutb);
+  output->Add(hsvc);
+
+  // Optionally save out Left sing. vectors
+  if (opt.Contains("U")) {
+    TMatrixD U  = decomp.GetU();
+    for (int i=0; i<ns; i++) {
+      TVectorD ui = TMatrixDColumn(U, i);
+      hui = Vec2Hist(ui, 0., ns, Form("SV_u_%d",i), Form("SV_u_{%d}",i));
+      output->Add(hui);
+    }
   }
-
   return;
 }
 
@@ -303,7 +322,7 @@ UnfoldingUtils::DrawSVDPlot(TObjArray* svdhists, double ymin, double ymax)
 }
 
 TCanvas* 
-UnfoldingUtils::DrawGSVDPlot(TObjArray* svdhists, double ymin, double ymax)
+UnfoldingUtils::DrawGSVDPlot(TObjArray* svdhists, double ymin, double ymax, TString opt)
 {
   static int i=0; i++;
   TCanvas* c = new TCanvas(Form("cgsvd%d",i), Form("cgsvd%d",i), 1);
@@ -313,17 +332,25 @@ UnfoldingUtils::DrawGSVDPlot(TObjArray* svdhists, double ymin, double ymax)
   if (!hs) Warning("DrawGSVDPlot()","!hs");
   if (!hd) Warning("DrawGSVDPlot()","!hd");
   if (!hl) Warning("DrawGSVDPlot()","!hl");
-  if (hs) {
+  if (hs) { // Draw frame histo
     TH2F* hsvd = new TH2F(Form("hgsvd%d",i), "GSVD components;column index i;", 
 			  200, 0, hs->GetNbinsX(), 200, ymin, ymax);
+    TLine l;
+    l.SetLineColor(kGray);
+
+
     hsvd->Draw();
-    hs->Draw("plsame");
+    l.DrawLine(0, 1, (double)hs->GetNbinsX(), 1);
+    if (opt.Contains("hs"))
+      hs->Draw("plsame");
     hd->Draw("plsame");
     hl->Draw("plsame");
     gPad->SetLogy();
+
     
     TLegend* leg = new TLegend(0.75, 0.75, 0.99, 0.99);
-    leg->AddEntry(hs, hs->GetTitle(), "p");
+    if (opt.Contains("hs"))
+      leg->AddEntry(hs, hs->GetTitle(), "p");
     leg->AddEntry(hd, hd->GetTitle(), "ep");
     leg->AddEntry(hl, hl->GetTitle(), "ep");
     leg->SetFillColor(kNone);
@@ -627,8 +654,7 @@ UnfoldingUtils::UnfoldChiSqMin(TH2* hA, TH1* hb, TH1* hXStart, TH1* hEff, TH1* h
 }
 
 TH1D* 
-UnfoldingUtils::UnfoldSVD(TH2* hA, TH1* hb, TH1* hXini, 
-			  double lambda, TObjArray* output, TString opt)
+UnfoldingUtils::UnfoldSVD(double lambda, TObjArray* output, TString opt)
 {
   static int id=0; id++; // So this fn. can be called more than once
   
@@ -637,33 +663,18 @@ UnfoldingUtils::UnfoldSVD(TH2* hA, TH1* hb, TH1* hXini,
     matrixType = k2DerivBC0;   // favor w=0 at boundaries
   
   // Setup
-  TMatrixD A       = Hist2Matrix(hA);
-  TVectorD b       = Hist2Vec(hb);
-  TMatrixD L       = LMatrix(A.GetNcols(), matrixType, 1e-5);
-  TMatrixD Linv    = MoorePenroseInverse(L);
-  TMatrixD LTi(Linv); LTi.T(); // L^{-T}
-  
-  TVectorD xini(A.GetNcols());
-  if (hXini) 
-    xini = Hist2Vec(hXini);
-  
-  TVectorD eb(b);
-  for (int i=0; i<b.GetNrows(); i++) 
-    eb(i) = hb->GetBinError(i+i);
+  TMatrixD A(fMatA);
+  TVectorD b(fVecb);
+  TVectorD xini(fVecXini); // All 1's if no fHistXini
+  if (opt.Contains("~")) {
+    A = fMatATilde;
+    b = fVecbTilde;
+  }
 
-  //  double factor = b.Sum()/A.Sum();
-  //  double factor = b.Sum()/A.Sum()/xini.Sum();
-  // xini *= factor;
-  //  A *= factor;
-  
-  if (hXini)  
-    A = MultRowsByVector(A, xini);
-  
-  // Scale by b uncertainty (A, b --> Atilde, btilde)  
-  A = DivColsByVector(A, eb);
-  b = ElemDiv(b,eb);    // b_i / eb_i
-  eb = ElemDiv(eb,eb);    // b_i / eb_i
-  
+  TMatrixD L    = LMatrix(A.GetNcols(), matrixType, 1e-5);
+  TMatrixD Linv = MoorePenroseInverse(L);
+  TMatrixD LTi(Linv); LTi.T(); // Inverse transpose L^{-T}
+
   // Compute SVD of AL^{-1} & get results
   TDecompSVD decomp(A*Linv);
   TVectorD s_vec   = decomp.GetSig();
@@ -694,22 +705,16 @@ UnfoldingUtils::UnfoldSVD(TH2* hA, TH1* hb, TH1* hXini,
     dlam(i) = absd(i)*tf(i);
   }
 
-  // absd *= b.Sum()/xini.Sum();
-  // dlam *= b.Sum()/xini.Sum();
-
   // Compute final solutions
   TVectorD w = Linv * V * z;
   TVectorD x(w);
-  if (hXini) 
-    x = ElemMult(xini,w);
+  x = ElemMult(xini,w);
 
   // and covariance matrices: 
   TMatrixD Z(nd,nd); 
-  for (int i=0; i<nd; i++) Z(i,i) = tf(i);
+  for (int i=0; i<nd; i++) 
+    Z(i,i) = tf(i);
   TMatrixD Wcov = Linv*V*Z*VT*LTi;
-  // TVectorD wx = Wcov*xini;
-  // TMatrixD Xcov = OuterProduct(xini, wx);
-
   TMatrixD Xcov(nd,nd);
   for (int i=0; i<nd; i++) {
     for (int k=0; k<nd; k++) {
@@ -733,8 +738,8 @@ UnfoldingUtils::UnfoldSVD(TH2* hA, TH1* hb, TH1* hXini,
   // Add components to output list
   if (output) {
     TH1D* hs = Vec2Hist(s_vec, 0., nd, Form("hs%d",id), "s_{i} ");
-    TH1D* hd = Vec2Hist(absd,  0., nd, Form("hd%d",id), Form("|d_{i}| = |(U^{T}b)_{i}|" ));
-    TH1D* hl = Vec2Hist(dlam,  0., nd, Form("hl%d",id), Form("|d^{(#lambda)}_{i}|, #lambda = %g ",lambda));
+    TH1D* hd = Vec2Hist(absd,  0., nd, Form("hd%d",id), Form("#||{d_{i}} = #||{(U^{T}b)_{i}}" ));
+    TH1D* hl = Vec2Hist(dlam,  0., nd, Form("hl%d",id), Form("#||{d^{(#lambda)}_{i}}, #lambda = %g ",lambda));
     TH1D* hw = Vec2Hist(w,     0., nd, Form("hw%d",id), Form("w^{#lambda = %g} ",lambda));
     TH1D* ht = Vec2Hist(tf,    0., nd, Form("ht%d",id), Form("s_{i}^{2}/(s_{i}^{2}+#lambda^{2}), #lambda = %g ",lambda));
     SetTH1Props(hs, kBlack, 0, kBlack, kFullCircle, 1.0);
@@ -1606,4 +1611,38 @@ UnfoldingUtils::DerivativeMatrix(int n, int d)
   }
   
   return L;
+}
+
+void 
+UnfoldingUtils::NormalizeXSum(TH2* hA, TH1* hN)
+{
+  // Normalize x-rows of hA so each row sums to 1.0 (default), or
+  // optionally to the value of the jth bin of hN.
+  
+  int nx = hA->GetNbinsX();
+  int ny = hA->GetNbinsY();
+  
+  if (hN)
+    if (ny != hN->GetNbinsX())
+      Error("NormalizeXSum()", 
+	    "ny=%d != %d in hN", nx, hN->GetNbinsX());
+  
+  // xsum(j) contains sum of x cells in row j
+  TVectorD xsum(ny);
+  for (int j=0; j<ny; j++) {
+    for (int i=0; i<nx; i++) {
+      xsum(j) += hA->GetBinContent(i+1,j+1);
+    }
+  }
+  
+  // Change bin contents of hA to normalized value, which is 1.0 if hN
+  // is not passed in.
+  for (int j=0; j<ny; j++) {
+    double a = hN ? hN->GetBinContent(j+1) : 1.; 
+    double w = (xsum(j) != 0.) ? a/xsum(j) : a;
+    for (int i=0; i<nx; i++) {
+      double val = w*hA->GetBinContent(i+1,j+1);
+      hA->SetBinContent(i+1,j+1, val);
+    }
+  }
 }
