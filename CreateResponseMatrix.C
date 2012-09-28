@@ -59,13 +59,13 @@ void CreateResponseMatrix()
 
   // Normalize rebinned hBkg so that each TH2 row j (=TMatrixD cols)
   // sums to content of bkgNorm(j)
-  NormalizeXSum(hBkg, bkgNorm);
+  uu.NormalizeXSum(hBkg, bkgNorm);
   TH1D* yProj=(TH1D*)hBkg->ProjectionY("yproj"); // QA
 
   // Detector response matrix
   TH2D* hDet = (TH2D*)hRespDet_in->Clone("hDet");
   hDet->Rebin2D(rebinMeas,rebinTrue);
-  NormalizeXSum(hDet);
+  uu.NormalizeXSum(hDet);
   TH1D* DetyProj=(TH1D*)hDet->ProjectionY("detyproj"); // QA
   DetyProj->SetTitle("Detector efficiency");
 
@@ -147,40 +147,8 @@ int Load()
 {
   if (gSystem->Getenv("TMPDIR"))
     gSystem->SetBuildDir(gSystem->Getenv("TMPDIR"));
-  gROOT->LoadMacro("UtilFns.C+");
+  gROOT->LoadMacro("UtilFns.C");
   gROOT->LoadMacro("UnfoldingUtils.C+g");
   return 0;
 }
 
-void NormalizeXSum(TH2* hA, TH1* hN=0)
-{
-  // Normalize x-rows of hA so each row sums to 1.0 (default), or
-  // optionally to the value of the jth bin of hN.
-
-  int nx = hA->GetNbinsX();
-  int ny = hA->GetNbinsY();
-
-  if (hN)
-    if (ny != hN->GetNbinsX())
-      Error("NormalizeXSum()", 
-	    "ny=%d != %d in hN", nx, hN->GetNbinsX());
-  
-  // xsum(j) contains sum of x cells in row j
-  TVectorD xsum(ny);
-  for (int j=0; j<ny; j++) {
-    for (int i=0; i<nx; i++) {
-      xsum(j) += hA->GetBinContent(i+1,j+1);
-    }
-  }
-
-  // Change bin contents of hA to normalized value, which is 1.0 if hN
-  // is not passed in.
-  for (int j=0; j<ny; j++) {
-    double a = hN ? hN->GetBinContent(j+1) : 1.; 
-    double w = (xsum(j) > 1e-15) ? a/xsum(j) : a;
-    for (int i=0; i<nx; i++) {
-      double val = w*hA->GetBinContent(i+1,j+1);
-      hA->SetBinContent(i+1,j+1, val);
-    }
-  }
-}
