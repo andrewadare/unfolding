@@ -85,9 +85,6 @@ class UnfoldingUtils
 
   // opt can be "BC0" or "BCR" for zero or reflective boundary conditions.
   TH1D* UnfoldSVD(double lambda, TObjArray* output=0, TString opt="");
-  /* TH1D* UnfoldSVD(TH2* hA, TH1* hb, TH1* hXini, double lambda,  */
-  /* 		  TObjArray* output=0, TString opt="BCR"); */
-  
 
   TH1D* UnfoldChiSqMin(TH2* hA, TH1* hb, TH1* hXStart, TH1* hEff, TH1* hXini, 
 		       double regWt, TObjArray* output, TString opt="");
@@ -98,7 +95,8 @@ class UnfoldingUtils
   double RegChi2(const double *pars);
   
   // Analysis methods
-  void  SVDAnalysis(TH2* hA, TH1* hb, TObjArray* output, TString opt="");
+  TGraph* ResidualNorm(TObjArray* hists, double stepSize = 1.);
+  void  SVDAnalysis(TObjArray* output, TH2* hA=0, TH1* hb=0, TString opt="");
   TCanvas* DrawSVDPlot(TObjArray* svdhists, double ymin, double ymax);
   TCanvas* DrawGSVDPlot(TObjArray* svdhists, double ymin, double ymax, TString opt="");
   

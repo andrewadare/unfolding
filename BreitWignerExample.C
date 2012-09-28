@@ -36,8 +36,11 @@ void BreitWignerExample()
   FillDistributions();
   UnfoldingUtils uu(Adet, data, 0, xini, datatrue, 0);
 
-  double lambda = 10.0;
-  hSVD = uu.UnfoldSVD(lambda, gsvdHists, "~");
+  // SVD analysis of the system
+  uu.SVDAnalysis(svdHists);
+
+  double lambda = 50.0;
+  hSVD = uu.UnfoldSVD(lambda, gsvdHists, "BC0, ~");
 
   // Draw
   SetHistProps(hSVD, kGreen+2, kNone, kGreen+2, kOpenCircle, 1.0);
@@ -46,9 +49,21 @@ void BreitWignerExample()
   DrawObject(datatrue, "ep", "Breit-Wigner test problem");
   data->Draw("epsame");
   hSVD->Draw("same");
-  // xini->Scale(0.1);  
-  // xini->Draw("same");
+
+  uu.DrawSVDPlot(svdHists, 1e-4, 1e4);
   uu.DrawGSVDPlot(gsvdHists, 5e-3, 100);
+
+  // Covariance matrices
+  TH2D* hWcov = (TH2D*)gsvdHists->FindObject("hWcov1");
+  DrawObject(hWcov, "colz");
+  TH2D* hXcov = (TH2D*)gsvdHists->FindObject("hXcov1");
+  DrawObject(hXcov, "colz");
+  TH2D* hXinv = (TH2D*)gsvdHists->FindObject("hXinv1");
+  DrawObject(hXinv, "colz");
+  TH2D* x1x = uu.TH2Product(hXinv, hXcov, "x1x");
+  TH2D* xx1x = uu.TH2Product(hXcov, x1x, "XXinvX"); // supposed to equal hXcov
+  DrawObject(xx1x, "colz");
+
 }
 
 void Load()

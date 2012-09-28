@@ -231,7 +231,7 @@ UnfoldingUtils::ComputeRescaledSystem()
 */
 
 void 
-UnfoldingUtils::SVDAnalysis(TH2* hA, TH1* hb, TObjArray* output, TString opt)
+UnfoldingUtils::SVDAnalysis(TObjArray* output, TH2* hA, TH1* hb, TString opt)
 {
   // Decompose A as U*Sigma*V' and study the components. If A is m x
   // n, then U is a column-orthogonal m x n matrix, Sigma is a
@@ -265,8 +265,8 @@ UnfoldingUtils::SVDAnalysis(TH2* hA, TH1* hb, TObjArray* output, TString opt)
   
   TH1D *hsig=0, *hutb=0, *hsvc=0, *hui=0;
   hsig = Vec2Hist(sig, 0., ns, Form("hsig%d",id), "#sigma_{i} ");
-  hutb = Vec2Hist(utb, 0., ns, Form("hutb%d",id), "|u^{T}_{i}#upointb| ");
-  hsvc = Vec2Hist(svc, 0., ns, Form("hsvc%d",id), "|u^{T}_{i}#upointb| / #sigma_{i} ");
+  hutb = Vec2Hist(utb, 0., ns, Form("hutb%d",id), "#||{u^{T}_{i}#upointb} ");
+  hsvc = Vec2Hist(svc, 0., ns, Form("hsvc%d",id), "#||{u^{T}_{i}#upointb} / #sigma_{i} ");
 
   SetTH1Props(hsig, kBlack, 0, kBlack, kFullCircle, 1.0);
   SetTH1Props(hutb, kBlue, 0, kBlue, kFullSquare, 1.0);
@@ -293,9 +293,9 @@ UnfoldingUtils::DrawSVDPlot(TObjArray* svdhists, double ymin, double ymax)
 {
   static int i=0; i++;
   TCanvas* c = new TCanvas(Form("csvd%d",i), Form("csvd%d",i), 1);
-  TH1D* hSigma = (TH1D*)svdhists->At(0);//FindObject("hSigma");
-  TH1D* hUb    = (TH1D*)svdhists->At(1);//FindObject("hUb");
-  TH1D* hUbSig = (TH1D*)svdhists->At(2);//FindObject("hUbSig");
+  TH1D* hSigma = (TH1D*)svdhists->At(0);
+  TH1D* hUb    = (TH1D*)svdhists->At(1);
+  TH1D* hUbSig = (TH1D*)svdhists->At(2);
   if (!hSigma)
     Warning("DrawSVDPlot()","!hSigma");
   if (!hUb)
@@ -666,14 +666,21 @@ UnfoldingUtils::UnfoldSVD(double lambda, TObjArray* output, TString opt)
   TMatrixD A(fMatA);
   TVectorD b(fVecb);
   TVectorD xini(fVecXini); // All 1's if no fHistXini
+
   if (opt.Contains("~")) {
     A = fMatATilde;
     b = fVecbTilde;
   }
-
+  else {
+    A *= fMatATilde.Sum()/fMatA.Sum();
+    b *= fVecbTilde.Sum()/fVecb.Sum();
+  }
+  
   TMatrixD L    = LMatrix(A.GetNcols(), matrixType, 1e-5);
   TMatrixD Linv = MoorePenroseInverse(L);
-  TMatrixD LTi(Linv); LTi.T(); // Inverse transpose L^{-T}
+  TMatrixD LTi(L); 
+  LTi.T(); // Inverse transpose L^{-T}
+  //  LTi = MoorePenroseInverse(LTi); // Does not look right
 
   // Compute SVD of AL^{-1} & get results
   TDecompSVD decomp(A*Linv);
@@ -710,17 +717,23 @@ UnfoldingUtils::UnfoldSVD(double lambda, TObjArray* output, TString opt)
   TVectorD x(w);
   x = ElemMult(xini,w);
 
+  TVectorD resid = A*x - b;
+
   // and covariance matrices: 
   TMatrixD Z(nd,nd); 
   for (int i=0; i<nd; i++) 
     Z(i,i) = tf(i);
   TMatrixD Wcov = Linv*V*Z*VT*LTi;
+  //  TMatrixD Wcov = Linv*V*Z*VT*L;
   TMatrixD Xcov(nd,nd);
   for (int i=0; i<nd; i++) {
     for (int k=0; k<nd; k++) {
       Xcov(i,k) = xini(i)*Wcov(i,k)*xini(k);
     }
   }
+
+  // Normalize
+  //Xcov *= 1./(xini*xini);
 
   // X inverse (without using Xcov, see eq. 53)
   TMatrixD Xinv(nd, nd);
@@ -742,6 +755,8 @@ UnfoldingUtils::UnfoldSVD(double lambda, TObjArray* output, TString opt)
     TH1D* hl = Vec2Hist(dlam,  0., nd, Form("hl%d",id), Form("#||{d^{(#lambda)}_{i}}, #lambda = %g ",lambda));
     TH1D* hw = Vec2Hist(w,     0., nd, Form("hw%d",id), Form("w^{#lambda = %g} ",lambda));
     TH1D* ht = Vec2Hist(tf,    0., nd, Form("ht%d",id), Form("s_{i}^{2}/(s_{i}^{2}+#lambda^{2}), #lambda = %g ",lambda));
+    TH1D* hr = Vec2Hist(resid, 0., nd, Form("hr%d",id), Form("Ax^{(#lambda)}-b, #lambda = %g ",lambda));
+
     SetTH1Props(hs, kBlack, 0, kBlack, kFullCircle, 1.0);
     SetTH1Props(hd, kBlue,  0, kBlue,  kFullSquare, 1.0);
     SetTH1Props(hl, kMagenta+1,  0, kMagenta+1,  kOpenSquare, 1.0);
@@ -762,12 +777,18 @@ UnfoldingUtils::UnfoldSVD(double lambda, TObjArray* output, TString opt)
     output->Add(hl);
     output->Add(hw);
     output->Add(ht);
+    output->Add(hr);
     output->Add(hWcov);
     output->Add(hXcov);
     output->Add(hXinv);
   }
   
   TH1D* hx = Vec2Hist(x,fTrueX1,fTrueX2,Form("hSVD%d",id), Form("#lambda = %g", lambda));
+
+  for (int i=0; i<nd; i++) {
+    hx->SetBinError(i+1, TMath::Sqrt(Xcov(i,i)));
+  }
+  
   return hx;
 }
 
@@ -1645,4 +1666,44 @@ UnfoldingUtils::NormalizeXSum(TH2* hA, TH1* hN)
       hA->SetBinContent(i+1,j+1, val);
     }
   }
+}
+
+TGraph*
+UnfoldingUtils::ResidualNorm(TObjArray* hists, double stepSize)
+{
+  static int id=0; id++;
+
+  // Check for Ax-b histos in hists
+  TObjArray* subList = new TObjArray();
+  for (int i=0; i<hists->GetEntries(); i++) {
+    TObject* obj = hists->At(i);
+    TString name = obj->GetName();
+    TString cl   = obj->ClassName();
+    if (name.Contains("hr") && cl.Contains("TH1")) {
+      subList->Add(obj);
+      if (0) 
+	Info("UnfoldingUtils::ResidualNorm()", "Added %s",name.Data());
+    }
+  }
+  int np = subList->GetEntries();
+  TGraph* g = new TGraph(np);
+  for (int i=0; i<np; i++) {
+    TH1* h = (TH1*)subList->At(i);
+    TVectorD r = Hist2Vec(h);
+    g->SetPoint(i, stepSize*(i), TMath::Sqrt(r*r));    
+  }
+  
+  if (g->GetN()==0)
+    Warning("UnfoldingUtils::ResidualNorm()", "No points in graph. np=%d", np);
+  
+  g->SetLineColor(kBlue-2);
+  g->SetMarkerColor(kBlue-2);
+  g->SetMarkerStyle(kFullCircle);
+  g->SetMarkerSize(1.);
+  g->SetLineWidth(2);
+  g->SetNameTitle(Form("rn_%d",id), 
+		  Form("Residual Norm;"
+		       "#lambda;"
+		       "Residual norm ||Ax^{(#lambda)}-b||_{2};"));
+  return g;
 }

@@ -2,8 +2,8 @@ bool savePDF = 0;
 const int n=32;                     // number of points
 
 TH1D *hTrue=0, *hXini=0;
-TH1D *hMeas=0, *hMeasIdeal=0;       // Measured vector b w/0, w/ noise
-TH2D *hResp=0, *hRespT=0;           // Response matrix & transpose
+TH1D *hMeas=0, *hMeasI=0;       // Measured vector b, w/ & w/o noise
+TH2D *hResp=0, *hRespT=0;       // Response matrix & transpose
 TH1D* hSVD=0;
 
 TObjArray* cList = new TObjArray();
@@ -12,7 +12,9 @@ TObjArray* extrasRL = new TObjArray();
 TObjArray* histsPCGLS = new TObjArray();
 TObjArray* extrasPCGLS = new TObjArray();
 TObjArray* svdHists = new TObjArray();
-TObjArray* gsvdHists = new TObjArray();
+TObjArray* svdResid = new TObjArray();
+TObjArray* genSvdAna = new TObjArray();
+TObjArray* svdAnim = new TObjArray();
 TObjArray* statObjs = new TObjArray();
 
 TLatex lt;
@@ -22,25 +24,36 @@ void ShawExample()
   gStyle->SetOptStat(0);
   lt.SetNDC();
   LoadLibs();
-  UnfoldingUtils uu;
-  uu.SetTrueRange(0.,1); 
-  uu.SetMeasRange(0.,1);
-  double deltab = 0.05; // Gaussian white noise on b
 
   // Setup:
-  TObjArray* ShawArray = uu.ShawSystem(n,deltab);
+  UnfoldingUtils shaw;
+  shaw.SetTrueRange(0.,1); 
+  shaw.SetMeasRange(0.,1);
+  double deltab = 0.05; // Gaussian white noise on b
+  TObjArray* ShawArray = shaw.ShawSystem(n,deltab);
   hResp = (TH2D*)ShawArray->FindObject("Shaw_A");
   hTrue = (TH1D*)ShawArray->FindObject("Shaw_x");
   hMeas = (TH1D*)ShawArray->FindObject("Shaw_b");
+  hMeasI = (TH1D*)ShawArray->FindObject("Shaw_b_ideal");
   hXini = hResp->ProjectionX("hXini");
+  statObjs->Add(hMeasI); 
   statObjs->Add(hMeas); 
   statObjs->Add(hTrue);
   SetHistProps(hTrue, kBlack, kNone, kBlack, kFullCircle, 1.0);
   SetHistProps(hMeas, kBlue, kNone, kBlue, kOpenSquare, 1.0);
+  SetHistProps(hMeasI, kBlue-1, kNone, kBlue-1, kDot, 1.0);
+  hMeasI->SetLineWidth(2);
+
+  //  hXini->Scale(hTrue->Integral()/hXini->Integral());
+  for (int i=0; i<n; i++)
+    hXini->SetBinContent(i+1,1.0);
+
+
+  UnfoldingUtils uu(hResp, hMeas, 0, hXini, hTrue);
 
   // SVD Picard plot -------------------------------------------------
   // -----------------------------------------------------------------
-  uu.SVDAnalysis(hResp, hMeas, svdHists);
+  uu.SVDAnalysis(svdHists);
 
   // PCGLS algorithm -------------------------------------------------
   // -----------------------------------------------------------------
@@ -51,26 +64,45 @@ void ShawExample()
   // Richardson-Lucy algorithm ---------------------------------------
   // -----------------------------------------------------------------
   int nIterRL = 500;
-  TH1D* hX0 = hXini; // Initial guess or "prior"
+  TH1D* hX0 = hMeas; // Initial guess or "prior"
   uu.UnfoldRichardsonLucy(hResp, hMeas, hX0, nIterRL, histsRL, 
 			  extrasRL, hXini);
   
   // SVD method (A. Hocker) ------------------------------------------
   // -----------------------------------------------------------------
-  TString svdBC = "BC0"; // Favor x=0 at edges (Reflect with "BCR")
-  double lambda = 50;
-  hSVD = uu.UnfoldSVD(hResp, hMeas, hXini, lambda, gsvdHists, svdBC);
+  TString svdBC = "BC0, ~"; // Favor x=0 at edges (Reflect with "BCR")
+  double lambda = 5.0;
+  hSVD = uu.UnfoldSVD(lambda, genSvdAna, svdBC);
   if (1) { // Scan lambda regularization values
-    for (int i=0; i<20; i++) {
-      lambda = 5*i;
-      TH1D* h = uu.UnfoldSVD(hResp, hMeas, hXini, lambda, 0, svdBC);
-      gsvdHists->Add(h);
+    double stepSize = 0.1;
+    for (int i=0; i<100; i++) {
+      lambda = stepSize*i;
+      TH1D* h = uu.UnfoldSVD(lambda, svdResid, svdBC);
+      svdAnim->Add(h);
     }
-    TGraphTime* an = Animation(gsvdHists, statObjs, "pl", 100 /*ms*/);
+    TGraphTime* an = Animation(svdAnim, statObjs, "pl", 100 /*ms*/);
     DrawObject(an, "", "SVD", cList, 700, 500);
   }
 
   uu.DrawSVDPlot(svdHists, 1e-18, 1e18);
+  uu.DrawGSVDPlot(genSvdAna, 1e-5, 1e2);
+
+  TGraph* svdRes = uu.ResidualNorm(svdResid, stepSize);
+  double errNorm = svdRes->GetY()[0] + 2*TMath::Sqrt(n)*deltab;
+  TLine e2Line;
+
+  DrawObject(svdRes, "ALP");
+  e2Line.DrawLine(0, errNorm, stepSize*svdRes->GetN(), errNorm);
+  //  svdRes->GetYaxis()->SetRangeUser(0., 6);
+
+  TH2D* hWcov = (TH2D*)genSvdAna->FindObject("hWcov1");
+  DrawObject(hWcov, "colz");
+  TH2D* hXcov = (TH2D*)genSvdAna->FindObject("hXcov1");
+  DrawObject(hXcov, "colz");
+
+
+  return;
+
   DrawAll();
 }
 
@@ -114,6 +146,7 @@ void DrawAll()
 
   // Best solutions
   DrawObject(hMeas, "pl", "Shaw test problem;x", cList);
+  hMeasI->Draw("plsame");
   hTrue->Draw("plsame");
   hSVD->SetLineWidth(2);
   hSVD->Draw("lsame");
