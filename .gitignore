@@ -1,2 +1,5 @@
-UtilFns.C
+*.d
+*.so
 *.root
+*.pdf
+*.gif
