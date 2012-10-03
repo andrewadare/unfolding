@@ -58,15 +58,13 @@ void ShawExample()
   // PCGLS algorithm -------------------------------------------------
   // -----------------------------------------------------------------
   int nIterPCGLS = 7;
-  uu.UnfoldPCGLS(hResp,hMeas,0,nIterPCGLS,histsPCGLS,extrasPCGLS,
-		 UnfoldingUtils::k2DerivBC0);
+  uu.UnfoldPCGLS(nIterPCGLS,histsPCGLS,extrasPCGLS,UnfoldingUtils::k2DerivBC0, "~");
 
   // Richardson-Lucy algorithm ---------------------------------------
   // -----------------------------------------------------------------
   int nIterRL = 500;
   TH1D* hX0 = hMeas; // Initial guess or "prior"
-  uu.UnfoldRichardsonLucy(hResp, hMeas, hX0, nIterRL, histsRL, 
-			  extrasRL, hXini);
+  uu.UnfoldRichardsonLucy(nIterRL, histsRL, extrasRL, "", hX0);
   
   // SVD method (A. Hocker) ------------------------------------------
   // -----------------------------------------------------------------
@@ -87,21 +85,22 @@ void ShawExample()
   uu.DrawSVDPlot(svdHists, 1e-18, 1e18);
   uu.DrawGSVDPlot(genSvdAna, 1e-5, 1e2);
 
-  TGraph* svdRes = uu.ResidualNorm(svdResid, stepSize);
-  double errNorm = svdRes->GetY()[0] + 2*TMath::Sqrt(n)*deltab;
-  TLine e2Line;
+  if (0) {
+    TGraph* svdRes = uu.ResidualNorm(svdResid, stepSize);
+    double errNorm = svdRes->GetY()[0] + 2*TMath::Sqrt(n)*deltab;
+    TLine e2Line;
+    DrawObject(svdRes, "ALP");
+    e2Line.DrawLine(0, errNorm, stepSize*svdRes->GetN(), errNorm);
+    //  svdRes->GetYaxis()->SetRangeUser(0., 6);
+  }
 
-  DrawObject(svdRes, "ALP");
-  e2Line.DrawLine(0, errNorm, stepSize*svdRes->GetN(), errNorm);
-  //  svdRes->GetYaxis()->SetRangeUser(0., 6);
-
-  TH2D* hWcov = (TH2D*)genSvdAna->FindObject("hWcov1");
-  DrawObject(hWcov, "colz");
-  TH2D* hXcov = (TH2D*)genSvdAna->FindObject("hXcov1");
-  DrawObject(hXcov, "colz");
+  // TH2D* hWcov = (TH2D*)genSvdAna->FindObject("hWcov1");
+  // DrawObject(hWcov, "colz");
+  // TH2D* hXcov = (TH2D*)genSvdAna->FindObject("hXcov1");
+  // DrawObject(hXcov, "colz");
 
 
-  return;
+  //  return;
 
   DrawAll();
 }

@@ -18,7 +18,12 @@ class UnfoldingUtils
 
   // Class administration
   UnfoldingUtils();
-  UnfoldingUtils(TH2D* hA, TH1D* hMeas, TH2D* hMeasCov=0, TH1D* hXini=0, TH1D* hXtrue=0, TH1D* hEff=0);
+  UnfoldingUtils(TH2D* hA, 
+		 TH1D* hMeas, 
+		 TH2D* hMeasCov = 0, 
+		 TH1D* hXini    = 0, 
+		 TH1D* hXtrue   = 0, 
+		 TH1D* hEff     = 0);
   virtual ~UnfoldingUtils() {}
   bool BinningOk();
   
@@ -63,32 +68,47 @@ class UnfoldingUtils
   // by numerical solution of an integral equation", J. Math. Anal. Appl. 37
   // (1972), 83–112.
   TObjArray* ShawSystem(const int n, double noise=0.);
-  void ShawSystem(const int n, TMatrixD& A, TVectorD& x, TVectorD& b, double noise=0);
+  void ShawSystem(const int n, TMatrixD& A, TVectorD& x, TVectorD& b,
+		  double noise=0);
 
   // Unfolding methods:
-  TH1D* UnfoldPCGLS(const TH2* hA, 
-		   const TH1* hb, 
-		   TH1* hXini,        // Optional
-		   const int nIterations, 
-		   TObjArray* hists,
-		   TObjArray* extras, 
-		   int lMatrixType,  // See LType enum
-		   TString opt = "");
+  // Preconditioned Conjugate Gradients for Least Squares
+  TH1D* UnfoldPCGLS(const int nIterations, 
+		    TObjArray* hists            = 0,
+		    TObjArray* extras           = 0, 
+		    int lMatrixType             = k2DerivBCR,
+		    TString opt                 = "",
+		    const TH2* hA               = 0, 
+		    const TH1* hb               = 0, 
+		    const TH1* hXini            = 0);
   
-  TH1D* UnfoldRichardsonLucy(const TH2* hResp,
-			    const TH1* hMeas,
-			    const TH1* hXStart, 
-			    const int nIterations, 
-			    TObjArray* hists,
-			    TObjArray* extras, 
-			    const TH1* hXini = 0);
-
-  // opt can be "BC0" or "BCR" for zero or reflective boundary conditions.
-  TH1D* UnfoldSVD(double lambda, TObjArray* output=0, TString opt="");
-
-  TH1D* UnfoldChiSqMin(TH2* hA, TH1* hb, TH1* hXStart, TH1* hEff, TH1* hXini, 
-		       double regWt, TObjArray* output, TString opt="");
-
+  // Richardson-Lucy algorithm
+  TH1D* UnfoldRichardsonLucy(const int nIterations, 
+			     TObjArray* hists   = 0,
+			     TObjArray* extras  = 0, 
+			     TString opt        = "",
+			     const TH1* hXStart = 0,
+			     const TH2* hA      = 0,
+			     const TH1* hb      = 0,
+			     const TH1* hXini   = 0);
+  
+  // Regularized Hocker/Kartvilishveli SVD algorithm
+  TH1D* UnfoldSVD(double lambda, 
+		  TObjArray* output             = 0, 
+		  TString opt                   = "", /*"BC0", "BCR"*/
+		  TH2* hA                       = 0, 
+		  TH1* hb                       = 0, 
+		  TH1* hXini                    = 0);
+  
+  // Regularized chi squared minimization algorithm
+  TH1D* UnfoldChiSqMin(double regWt, 
+		       TObjArray* output        = 0, 
+		       TString opt              = "",
+		       TH1* hXStart             = 0, 
+		       TH2* hA                  = 0, 
+		       TH1* hb                  = 0, 
+		       TH1* hXini               = 0); 
+  
   // Support functions for chi squared minimization method
   double SmoothingNorm(TVectorD& x, int regtype);
   double Curvature(TVectorD& x);
@@ -99,6 +119,11 @@ class UnfoldingUtils
   void  SVDAnalysis(TObjArray* output, TH2* hA=0, TH1* hb=0, TString opt="");
   TCanvas* DrawSVDPlot(TObjArray* svdhists, double ymin, double ymax);
   TCanvas* DrawGSVDPlot(TObjArray* svdhists, double ymin, double ymax, TString opt="");
+
+  TH2D* UnfoldCovMatrix(int nTrials, 
+			int algo, 
+			double regPar, 
+			TString opt);
   
   // Set and get methods  
   void SetTrueRange(double x1, double x2);
@@ -118,6 +143,7 @@ class UnfoldingUtils
   TMatrixD GetAProb()       const {return fMatAhat;}   // Prob matrix - cols sum to 1.0
   TMatrixD GetATilde()      const {return fMatATilde;} // A, scaled using error of b
   TMatrixD GetbCovariance() const {return fMatB;}      // Error matrix of b
+  TMatrixD GetbBinv()       const {return fMatBinv;}   // Inverse error matrix of b
   TVectorD Getb()           const {return fVecb;}      // vector of measured data points
   TVectorD GetbTilde()      const {return fVecbTilde;} // b, scaled by its error
   TVectorD GetxTrue()       const {return fVecXtrue;}  // b, scaled by its error
@@ -143,9 +169,15 @@ class UnfoldingUtils
 	       k2Norm,    // L_2 norm ||x||_2 = sqrt(x*x).
 	       kTotCurv}; // From 2nd derivative
  
+  enum UnfoldingAlgo{kSVDAlgo,
+		     kRichLucyAlgo,
+		     kChi2MinAlgo,
+		     kPCGLSAlgo};
+
  protected:
   void ComputeRescaledSystem();
 
+  bool fTilde;
   Int_t fM, fN;
   Double_t fMeasX1, fMeasX2, fTrueX1, fTrueX2;
   Double_t fRegWeight;   // For chi^2 method
@@ -164,6 +196,7 @@ class UnfoldingUtils
   TMatrixD fMatAhat;
   TMatrixD fMatATilde;
   TMatrixD fMatB;
+  TMatrixD fMatBinv;
   TVectorD fVecb;
   TVectorD fVecbTilde;
   TVectorD fVecXtrue;
