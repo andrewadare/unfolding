@@ -24,7 +24,9 @@ struct QRDecomp
   TMatrixD Q;
   TMatrixD R;
 };
+
 QRDecomp QR(TMatrixD& A);
+QRDecomp QL(TMatrixD& A);
 
 void CSD()
 {
@@ -32,7 +34,7 @@ void CSD()
   // Q (m+p x l, m+p >= l) is partitioned as Q1(mxl), Q2(pxl).
   // Dimensions: U(mxm), V(pxp), Z(lxl), C(mxl), S(pxl).
 
-  int m,p,l,q1,q2,r,n;
+  int m,p,l,q1,q2,r;
 
   // Example Q matrix
   TMatrixD Q(7,4);
@@ -115,62 +117,19 @@ cout << "T: ";  T.Print();
  cout << "T\'T + S\'S: ";  TS.Print();
 
  // QR decomp of T: T = UR
- TMatrixD Tcopy(T);
- QRDecomp qrT = QR(Tcopy);
+ QRDecomp qrT = QR(T);
  TMatrixD U = qrT.Q;
  TMatrixD R = qrT.R;
 
  cout << "U and R: ";
  U.Print();
  R.Print();
- TMatrixD UTU(U, TMatrixD::kTransposeMult, U);
- UTU.Print();
-
- // TDecompQRH qrt(T);
- // TMatrixD U = qrt.GetQ();
- // TMatrixD R = qrt.GetR();
- // TVectorD hBeta = qrt.GetW();
- // TVectorD hV = qrt.GetUp();
-
-// cout << "U: ";  U.Print();
-// cout << "R: ";  R.Print();
-// cout << "Householder beta: ";  hBeta.Print();
-
-//  TMatrixD QQ(U); QQ.UnitMatrix();
-
-//  for (int j=0; j<l; j++) {
-//    TVectorD v(l);// = TMatrixDColumn(U, j);
-//    for (int i=0; i<l; i++) {
-//      if (i<j)  v(i) = 0;
-//      if (i==j) v(i) = 1.;
-//      if (i>j)  v(i) = U(i-1, j);
-//    }
-//    TMatrixD H = OuterProduct(v, v);
-//    H *= hBeta(j);
-//    TMatrixD I(H); I.UnitMatrix();
-//    H = I - H;
-//    QQ *= H;
-
-//    Printf("v %d", j); v.Print();
-//  }
-//  QQ.Print();
-//  TMatrixD QTQ(QQ, TMatrixD::kTransposeMult, QQ);
-//  QTQ.Print();
-
-
 
 // Get the sub-matrix from R: [R33 R34]
  int r1,r2,c1,c2;
- r1=l-q2;
- r2=r-l+q2;
+ r1=r-1;
+ r2=r1+q1-r;
  c1=r1;
- c2=r2;
- TMatrixD R22 = R.GetSub(r1,r2,c1,c2);
- cout << "R22: ";  R22.Print();
-
- r1=r2+1;
- r2=r1+q1-r-2;
- c1=c2+1;
  c2=r2;
  TMatrixD R33 = R.GetSub(r1,r2,c1,c2);
  cout << "R33: ";  R33.Print();
@@ -207,9 +166,12 @@ cout << "T: ";  T.Print();
    if (i<l-q2) C(i,i) = 1.;
    else if (i<alpha.GetNrows()) C(i, i) = alpha(i);
  }
-
+ cout << "+++++++++++++++RESULT+++++++++++++++: "<<endl;
  cout << "C: ";  C.Print();
  cout << "S: ";  S.Print();
+ cout << "U: ";  U.Print();
+ cout << "V: ";  V.Print();
+ cout << "Z: ";  Z.Print();
  //#if(0)#endif
 
  return;
@@ -292,6 +254,54 @@ House Householder(TVectorD& x, int m)
   return h;
 }
 
+QRDecomp QL(TMatrixD& A)
+{
+  QRDecomp ql;
+  int m = A.GetNrows();
+  int n = A.GetNcols();
+  TMatrixD Q(m,m); Q.UnitMatrix();
+  TMatrixD L(A);
+  TMatrixD Qj(m,m);
+
+  int nIter = TMath::Min(m-1, n);
+  for (int j=0; j<nIter; j++) {
+    TVectorD col = TMatrixDColumn(L,n-j-1);
+    TVectorD x = col.GetSub(0,n-j-1);
+
+    //    Printf("x %d: ", n-j-1); x.Print();
+
+    int sign = (x(n-j-1)<0.)? 1. : -1.;
+    double alpha = sign*TMath::Sqrt(x*x);
+    TVectorD u(x);
+    u(n-j-1) += alpha;
+    
+    // Compute Householder vector v and matrix H
+    double unorm = TMath::Sqrt(u*u);
+    TVectorD v(u); v *= (unorm==0)? 0. : 1./unorm;  
+
+    // Printf("v %d: ", n-j-1); v.Print();
+
+    TMatrixD H = OuterProduct(v,v);
+    H *= 2;
+    TMatrixD I(H); I.UnitMatrix();
+    H = I - H;
+    
+    //    Printf("H %d: ", n-j-1); H.Print();
+
+    Qj.UnitMatrix();
+    Qj.SetSub(0,0,H);
+    
+    Q = Q*Qj;    
+    L = Qj*L;
+  }
+
+  ql.Q.ResizeTo(Q);
+  ql.R.ResizeTo(L);
+  ql.Q = Q;
+  ql.R = L;
+  
+  return ql;
+}
 
 QRDecomp QR(TMatrixD& A)
 {
@@ -327,13 +337,6 @@ QRDecomp QR(TMatrixD& A)
     R = Qj*R;
     
   }
-
-
-
-
-
-
-
 
   /*
   // G & VL,  ex. 5.4.1, p250
