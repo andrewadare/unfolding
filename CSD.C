@@ -19,13 +19,13 @@ struct House
   TVectorD v;
 };
 
-struct QRDecomp
+struct QRDecompResult
 {
   TMatrixD Q;
   TMatrixD R;
 };
 
-struct CSDecomp
+struct CSDecompResult
 {
   TMatrixD C;
   TMatrixD S;
@@ -34,10 +34,10 @@ struct CSDecomp
   TMatrixD Z;
 };
 
-QRDecomp QR(TMatrixD& A);
-QRDecomp QL(TMatrixD& A);
-CSDecomp CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2);
-CSDecomp CSDecompQ2Taller(TMatrixD& Q1, TMatrixD& Q2);
+QRDecompResult QRDecomp(TMatrixD& A);
+QRDecompResult QL(TMatrixD& A);
+CSDecompResult CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2);
+CSDecompResult CSDecomp(TMatrixD& Q1, TMatrixD& Q2);
 
 
 void CSD()
@@ -63,8 +63,8 @@ void CSD()
 
   // Partition Q
   int l=4;
-  //  int m=3; int p=4; 
-  int m=5; int p=2;
+    int m=3; int p=4; 
+    //int m=5; int p=2;
   TMatrixD Q1 = Q.GetSub(0, m-1,   0, l-1); // m x l
   TMatrixD Q2 = Q.GetSub(m, m+p-1, 0, l-1); // p x l
   cout << "Q1: ";  Q1.Print();
@@ -72,28 +72,40 @@ void CSD()
 
 
   if (m > p) {
-    CSDecomp cs = CSDecompQ1Taller(Q1, Q2);
+    CSDecompResult cs = CSDecompQ1Taller(Q1, Q2);
     cout << "+++++++++++++++ m > p result ++++++++++++++++: "<<endl;
     cout << "C: ";  cs.C.Print();
     cout << "S: ";  cs.S.Print();
     cout << "U: ";  cs.U.Print();
     cout << "V: ";  cs.V.Print();
     cout << "Z: ";  cs.Z.Print();
+    TMatrixD Q1test(cs.C, TMatrixD::kMultTranspose, cs.Z);
+    TMatrixD Q2test(cs.S, TMatrixD::kMultTranspose, cs.Z);
+    Q1test = Q1 - cs.U*Q1test;
+    Q2test = Q2 - cs.V*Q2test;
+    cout << "Q1 - UCZ': ";  Q1test.Print();
+    cout << "Q2 - VSZ': ";  Q2test.Print();
   }
   else {
-    CSDecomp cs = CSDecompQ2Taller(Q1, Q2);
+    CSDecompResult cs = CSDecomp(Q1, Q2);
     cout << "+++++++++++++++ m <= p result +++++++++++++++: "<<endl;
     cout << "C: ";  cs.C.Print();
     cout << "S: ";  cs.S.Print();
     cout << "U: ";  cs.U.Print();
     cout << "V: ";  cs.V.Print();
     cout << "Z: ";  cs.Z.Print();
+    TMatrixD Q1test(cs.C, TMatrixD::kMultTranspose, cs.Z);
+    TMatrixD Q2test(cs.S, TMatrixD::kMultTranspose, cs.Z);
+    Q1test = Q1 - cs.U*Q1test;
+    Q2test = Q2 - cs.V*Q2test;
+    cout << "Q1 - UCZ': ";  Q1test.Print();
+    cout << "Q2 - VSZ': ";  Q2test.Print();
   }
  
   return;
 }
 
-CSDecomp 
+CSDecompResult 
 CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
 {
   // ***************************************
@@ -108,7 +120,7 @@ CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   r  = 0;
   TMatrixD C(m,l);
   TMatrixD S(p,l);
-  CSDecomp cs;
+  CSDecompResult cs;
 
   // SVD of Q1: UCZ'
   TDecompSVD svdQ1(Q1);
@@ -136,7 +148,7 @@ CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   cout << "T: ";  T.Print();
 
   // QL decomp of T: VL
-  QRDecomp vl = QL(T);
+  QRDecompResult vl = QL(T);
 
   TMatrixD V = vl.Q;   // p x p
   TMatrixD L = vl.R;
@@ -197,7 +209,7 @@ CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   W = W*Zl;
   cout << "W: ";  W.Print();
 
-  QRDecomp qrw = QR(W);
+  QRDecompResult qrw = QRDecomp(W);
   TMatrixD Qw = qrw.Q;
 
 
@@ -228,13 +240,13 @@ CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   return cs;
 }
 
-CSDecomp 
-CSDecompQ2Taller(TMatrixD& Q1, TMatrixD& Q2)
+CSDecompResult 
+CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
 {
   // ***************************************
   // m <= p case
   // ***************************************
-  int m,p,l,q1,q2,r;
+  int m,p,l,q1,q2,r,n;
   m  = Q1.GetNrows();
   p  = Q2.GetNrows();
   l  = Q1.GetNcols();
@@ -244,7 +256,7 @@ CSDecompQ2Taller(TMatrixD& Q1, TMatrixD& Q2)
 
   TMatrixD C(m,l);
   TMatrixD S(p,l);
-  CSDecomp csd;
+  CSDecompResult csd;
 
   // Conventional SVD of Q2: VSZ'
   TDecompSVD svdQ2(Q2);
@@ -277,17 +289,19 @@ CSDecompQ2Taller(TMatrixD& Q1, TMatrixD& Q2)
 
   // Compute T = Q1(mxl) * Z(lxl) --> mxl
   TMatrixD T = Q1*Z;
-
-  // Check:
   cout << "T: ";  T.Print();
+
+  /*
+  // Check:
   TMatrixD TTT(T, TMatrixD::kTransposeMult, T);
   TMatrixD STS(S, TMatrixD::kTransposeMult, S);
   TMatrixD TS(TTT);
   TS+=STS;
   cout << "T\'T + S\'S: ";  TS.Print();
+  */
 
   // QR decomp of T: T = UR
-  QRDecomp qrT = QR(T);
+  QRDecompResult qrT = QRDecomp(T);
   TMatrixD U = qrT.Q;
   TMatrixD R = qrT.R;
   
@@ -296,47 +310,73 @@ CSDecompQ2Taller(TMatrixD& Q1, TMatrixD& Q2)
   R.Print();
 
   // Get the sub-matrix from R: [R33 R34]
-  int r1,r2,c1,c2;
-  r1=r-1;
-  r2=r1+q1-r;
-  c1=r1;
-  c2=r2;
-  TMatrixD R33 = R.GetSub(r1,r2,c1,c2);
-  cout << "R33: ";  R33.Print();
+  int rr = (r > 0) ? r-1 : 0;
+  TMatrixD R3 = R.GetSub(rr,R.GetNrows()-1,rr,R.GetNcols()-1);
+  int r3r = R3.GetNrows();
+  int r3c = R3.GetNcols();
+  if (r3r < r3c)
+    R3.ResizeTo(r3c, r3c);
 
-  c1=c2+1;
-  c2=R.GetNcols()-1;
-  TMatrixD R34 = R.GetSub(r1,r2,c1,c2);
-  cout << "R34: ";  R34.Print();
-
-  int r33 = R33.GetNrows(), c33 = R33.GetNcols();
-  int c34 = R34.GetNcols();
-
-  TMatrixD R3334(r33, c33+c34);
-  if (r33 < c33+c34)
-    R3334.ResizeTo(c33+c34, c33+c34);
- 
-  TMatrixDSub(R3334, 0, r33-1, 0,   c33-1) += R33;
-  TMatrixDSub(R3334, 0, r33-1, c33, c33+c34-1) += R34;
-  cout << "[R33 R34]: ";  R3334.Print();
+  cout << "[R33 R34]: ";  R3.Print();
 
   // Compute SVD of [R33 R34]
-  TDecompSVD svd2(R3334);
+  TDecompSVD svd2(R3);
   TMatrixD Ur = svd2.GetU();
   TMatrixD Zr = svd2.GetV();
   TVectorD alpha = svd2.GetSig();
+  TMatrixD Zrt = Zr.GetSub(0,q2-r-2,0,q2-r-2);
 
-  cout << "Ur: ";  Ur.Print();
-  cout << "Zr: ";  Zr.Print();
-  cout << "alpha: ";  alpha.Print();
+  // Resize U to un-do TDecompSVD-required modification
+  if (r3r < r3c) {
+    Ur.ResizeTo(r3r,r3r);
+  }
 
-  // Assign C
-  // int t = q1 + q2 - l; // 3
+  // Construct C from alpha
   for (int i=0; i<q1; i++) {
     if (i<l-q2) C(i,i) = 1.;
     else if (i<alpha.GetNrows()) C(i, i) = alpha(i);
   }
 
+  // Form final U matrix
+  TMatrixD UrSub(r,r);
+  UrSub.UnitMatrix();
+  Ur.SetSub(0,0,UrSub);
+  U = U*Ur;
+  // *** TODO *** Still need to assign unit sub-matrix on lower-right
+  // diagonal of Ur for cases when m > q1
+
+  // Form final Z matrix
+  TMatrixD ZrSub(r,r);
+  ZrSub.UnitMatrix();
+  Zr.SetSub(0,0,ZrSub);
+  Z = Z*Zr;
+
+  cout << "Ur: ";  Ur.Print();
+  cout << "Zr: ";  Zr.Print();
+  cout << "alpha: ";  alpha.Print();
+
+  // Form final V matrix
+  TMatrixD St(Zrt);
+  St.Zero();
+  for (int i=0; i<St.GetNcols(); i++)
+    St(i,i) = beta(i+r+1);
+  
+  TMatrixD W = St*Zrt;
+  QRDecompResult qrw = QRDecomp(W);
+  TMatrixD Qw = qrw.Q;
+  n = TMath::Min(r+1,l-q2);
+
+  TMatrixD Vpost(V);
+  Vpost.UnitMatrix();
+  Vpost.SetSub(r-n+1, r-n+1, Qw);
+  V = V*Vpost;
+  
+  cout << "St: ";  St.Print();
+  cout << "Zrt: ";  Zrt.Print();
+  cout << "W: ";  W.Print();
+  cout << "Qw: ";  Qw.Print();
+  cout << "Vpost: ";  Vpost.Print();
+  
   csd.C.ResizeTo(C);
   csd.S.ResizeTo(S);
   csd.U.ResizeTo(U);
@@ -349,6 +389,7 @@ CSDecompQ2Taller(TMatrixD& Q1, TMatrixD& Q2)
   csd.V = V;
   csd.Z = Z;
 
+  Printf("m,p,l,q1,q2,r,n = %d,%d,%d,%d,%d,%d,%d",  m,p,l,q1,q2,r,n);
   return csd;
 }
 
@@ -431,10 +472,10 @@ House Householder(TVectorD& x, int m)
   return h;
 }
 
-QRDecomp QL(TMatrixD& A)
+QRDecompResult QL(TMatrixD& A)
 {
   // Compute QL decomposition of A using Householder transformations
-  QRDecomp ql;
+  QRDecompResult ql;
   int m = A.GetNrows();
   int n = A.GetNcols();
   TMatrixD Q(m,m); Q.UnitMatrix();
@@ -477,10 +518,11 @@ QRDecomp QL(TMatrixD& A)
   return ql;
 }
 
-QRDecomp QR(TMatrixD& A)
+QRDecompResult 
+QRDecomp(TMatrixD& A)
 {
   // Compute QR decomposition of A using Householder transformations
-  QRDecomp qr;
+  QRDecompResult qr;
   int m = A.GetNrows();
   int n = A.GetNcols();
   TMatrixD Q(m,m); Q.UnitMatrix();
@@ -491,7 +533,7 @@ QRDecomp QR(TMatrixD& A)
   for (int j=0; j<nIter; j++) {
     TVectorD col = TMatrixDColumn(R,j);
     TVectorD x = col.GetSub(j,m-1);
-    int sign = (x(0)<0.)? 1. : -1.;
+    int sign = (col(j)<0.)? -1. : 1.;
     double alpha = sign*TMath::Sqrt(x*x);
     TVectorD u(x);
     u(0) += alpha;
