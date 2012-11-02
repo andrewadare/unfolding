@@ -12,6 +12,22 @@ class TCanvas;
 #include "TMatrixD.h"
 #include "TVectorD.h"
 
+
+struct QRDecompResult
+{
+  TMatrixD Q;
+  TMatrixD R;
+};
+
+struct CSDecompResult
+{
+  TMatrixD C;
+  TMatrixD S;
+  TMatrixD U;
+  TMatrixD V;
+  TMatrixD Z;
+};
+
 class UnfoldingUtils 
 {
  public:
@@ -35,14 +51,32 @@ class UnfoldingUtils
 		    double x1, double x2, double y1, double y2);
   TH1D* XHist(TVectorD& x, TString base, int k, double xMin, 
 	      double xMax, double normto, TString opt="");
-  TH2D* BandedDiagonalMatrix(TH1* hDpt, const int nMeas, const int nTrue);
+  //  TH2D* BandedDiagonalMatrix(TH1* hDpt, const int nMeas, const int nTrue);
+  TH2D* BandedDiagonalMatrix(TH1* hDpt, 
+			     const int nMeas, 
+			     const int nTrue, 
+			     double xm1=0, 
+			     double xm2=0, 
+			     double xt1=0, 
+			     double xt2=0);
+
+  // Matrix decompositions
+  QRDecompResult QRDecomp(TMatrixD& A);
+  CSDecompResult CSDecomp(TMatrixD& Q1, TMatrixD& Q2);
   
   // Utility methods
+  void ReverseColumns(TMatrixD& A);
+  void ReverseRows(TMatrixD& A);
+  void ReverseVector(TVectorD& v);
+  void SwapColumns(TMatrixD &A, int col1, int col2);
+  void SwapElements(TVectorD& v, int j1, int j2);
+
   void NormalizeXSum(TH2* hA, TH1* hN=0); // Modify hA in-place
   TH2* TH2Product(TH2* hA, TH2* hB, TString name);
   TH2D* TH2Sub(TH2* h, int bx1, int bx2, int by1, int by2, TString name);
   TMatrixD MoorePenroseInverse(TMatrixD& A, double tol = 1e-15);
   TMatrixD Null(TMatrixD& A);
+  int Rank(TMatrixD& A);
   TMatrixD Toeplitz(int m1, int n1, double col[], double row[]);
   TMatrixD LMatrix(const int n, const int kind, double eps = 1.e-5);
   TMatrixD DerivativeMatrix(int n, int d);
@@ -117,7 +151,7 @@ class UnfoldingUtils
   // Analysis methods
   TGraph* ResidualNorm(TObjArray* hists, double stepSize = 1.);
   void  SVDAnalysis(TObjArray* output, TH2* hA=0, TH1* hb=0, TString opt="");
-  TCanvas* DrawSVDPlot(TObjArray* svdhists, double ymin, double ymax);
+  TCanvas* DrawSVDPlot(TObjArray* svdhists, double ymin, double ymax, TString opt="");
   TCanvas* DrawGSVDPlot(TObjArray* svdhists, double ymin, double ymax, TString opt="");
 
   TH2D* UnfoldCovMatrix(int nTrials, 
@@ -154,7 +188,8 @@ class UnfoldingUtils
   TH1D* GetbTildeHist()     const {return fHistbTilde;}
   TH1D* GetXiniHist()       const {return fHistXini;}
   TH1D* GetXTrueHist()      const {return fHistXtrue;}
-  
+  TH1D* GetEffHist()        const {return fHistEff;}
+
   // Smoothing matrix types (W is Null(L))
   enum LType{kUnitMatrix, // n   x n, W=0 
 	     k1DerivNoBC, // n-1 x n, W=const 
@@ -205,3 +240,4 @@ class UnfoldingUtils
   ClassDef(UnfoldingUtils, 1);
 };
 #endif
+
