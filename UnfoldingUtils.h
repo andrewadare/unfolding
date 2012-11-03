@@ -28,6 +28,15 @@ struct CSDecompResult
   TMatrixD Z;
 };
 
+struct GSVDecompResult
+{
+  TMatrixD C;
+  TMatrixD S;
+  TMatrixD U;
+  TMatrixD V;
+  TMatrixD XT;
+};
+
 class UnfoldingUtils 
 {
  public:
@@ -63,7 +72,8 @@ class UnfoldingUtils
   // Matrix decompositions
   QRDecompResult QRDecomp(TMatrixD& A);
   CSDecompResult CSDecomp(TMatrixD& Q1, TMatrixD& Q2);
-  
+  GSVDecompResult GSVD(TMatrixD& A, TMatrixD& B);
+
   // Utility methods
   void ReverseColumns(TMatrixD& A);
   void ReverseRows(TMatrixD& A);

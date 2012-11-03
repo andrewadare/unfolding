@@ -2116,15 +2116,21 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
 }
 
 GSVDecompResult 
-UnfoldingUtils::GSVDecomp(TMatrixD& A, TMatrixD& B)
+UnfoldingUtils::GSVD(TMatrixD& A, TMatrixD& B)
 {
   int m,p,n,r;
+  m = A.GetNrows();
+  n = A.GetNcols();
+  p = B.GetNrows();
+
+  // Should add some checks here (m>=n>=p, An = Bn, etc.)
+
   TMatrixD M(m+p,n);
 
   // 1. SVD of M = [A;B]: M = Q*S*Z'
   TMatrixDSub(M, 0, m-1,   0, n-1) += A;
   TMatrixDSub(M, m, m+p-1, 0, n-1) += B;
-  r = uu.Rank(M);
+  r = Rank(M);
   Printf("Rank(M): %d", r);
 
   TDecompSVD svdM(M);
@@ -2142,28 +2148,28 @@ UnfoldingUtils::GSVDecomp(TMatrixD& A, TMatrixD& B)
 
   // 3. Do CS decomposition
   CSDecompResult csd = CSDecomp(Q1, Q2);
-  TMatrixD U1 = csd.U;
-  TMatrixD U2 = csd.V;
-  TMatrixD C  = csd.C;
-  TMatrixD S  = csd.S;
-  TMatrixD V  = csd.Z;
+
+  GSVDecompResult g;
+  g.U.ResizeTo(csd.U);
+  g.V.ResizeTo(csd.V);
+  g.C.ResizeTo(csd.C);
+  g.S.ResizeTo(csd.S);
+
+  g.U = csd.U;
+  g.V = csd.V;
+  g.C = csd.C;
+  g.S = csd.S;
 
   // Create X' from V'Sigma (upper left) and W (lower right)
   TMatrixD XT(n,n);
-  XT.SetSub(0,0,TMatrixD(V,TMatrixD::kTransposeMult,Sr));
+  XT.SetSub(0,0,TMatrixD(csd.Z,TMatrixD::kTransposeMult,Sr));
   for (int i=r; i<n; i++) {
-    XT(i,i) = Sr(r-1);
+    XT(i,i) = Sr(r-1,r-1);
   }
   XT = TMatrixD(XT, TMatrixD::kMultTranspose, Z);
 
-  // Need to fill GSVDecomp struct and return it here
-  GSVDecompResult g;
-
-  
-  // TMatrixD Acheck = U1*C*XT;
-  // TMatrixD Bcheck = U2*S*XT;
-  // cout << "A - U1*C*XT: ";  Acheck.Print();
-  // cout << "B - U2*S*XT: ";  Bcheck.Print();
+  g.XT.ResizeTo(XT);
+  g.XT = XT;
 
   return g;  
 }
