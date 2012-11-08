@@ -71,7 +71,9 @@ class UnfoldingUtils
 
   // Matrix decompositions
   QRDecompResult QRDecomp(TMatrixD& A);
+  QRDecompResult QLDecomp(TMatrixD& A);
   CSDecompResult CSDecomp(TMatrixD& Q1, TMatrixD& Q2);
+  CSDecompResult CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2);
   GSVDecompResult GSVD(TMatrixD& A, TMatrixD& B);
 
   // Utility methods
