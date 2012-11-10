@@ -1973,7 +1973,7 @@ UnfoldingUtils::QLDecomp(TMatrixD& A)
   // cout<<"Q before"; Q.Print();
   // cout<<"L before"; L.Print();
   
-  bool requirePositivePivotEntries = false;
+  bool requirePositivePivotEntries = true;
   if (requirePositivePivotEntries) {
     int r = TMath::Min(m,n);
     int d = m-n;
@@ -2246,12 +2246,16 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   alpha          = svdQ1.GetSig();  // l
 
   // 3.
-  for (int i=q1; i<l; i++) {
-    alpha(i) = 0.0;
-    beta(i)  = 1.0; 
+  // for (int i=q1; i<l; i++)
+  //   alpha(i) = 0.0;
+  // for (int i=q2; i<l; i++)
+  //   beta(i)  = 1.0; 
+  for (int i = 0; i<l; i++) {
+    beta(i)  = 1.; 
+    if (i>=q1) alpha(i) = 0.;
   }
   
-  Printf("m=%d, p=%d, l=%d, q1=%d, q2=%d",  m,p,l,q1,q2);
+  Printf("CSD (Q1 taller): m=%d, p=%d, l=%d, q1=%d, q2=%d",  m,p,l,q1,q2);
   Printf("\nSVD: Q1 = U*diag(alpha)*Z\'");
   cout << "U: ";  U.Print();
   cout << "alpha: ";  alpha.Print();
@@ -2302,8 +2306,8 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
 
   // And its inverse (for later)
   TMatrixD PiInv(TMatrixD::kInverted, Pi);
-  // cout << "Pi: ";  Pi.Print();
-  // cout << "PiInv: ";  PiInv.Print();
+  cout << "Pi: ";  Pi.Print();
+  cout << "PiInv: ";  PiInv.Print();
   // cout << "Pi*L: ";  L.Print();
 
   // TMatrixD L1 = L.GetSub(p-q2,p-q2+r,0,l-q2+r);
@@ -2312,20 +2316,19 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   // L_11 and L_12
   int lastrow = (r>0)? r-1 : 0;
   
-  TMatrixD L1(l-q2+r,l-q2+r);
-  L1.SetSub(0,0,L.GetSub(p-q2,p-q2+lastrow,p-q2,l-q2+lastrow));
+  // TMatrixD L1(l-q2+r,l-q2+r);
+  // L1.SetSub(0,0,L.GetSub(p-q2,p-q2+lastrow,p-q2,l-q2+lastrow));
 
-  //  TMatrixD L1 = L.GetSub(p-q2,p-q2+lastrow,p-q2,l-q2+lastrow);
+  TMatrixD L1 = L.GetSub(p-q2,p-q2+lastrow,p-q2,l-q2+lastrow);
 
   // TODO L_23
-  // int t = q1+q2-l-rdim;
-  // if (t > 0) {
-  //   TMatrixD L2 = L.GetSub(rdim,q1-l+p-1,rdim+l-q2-1,q1-1);
-  //   cout << "L2: ";  L2.Print();
-  // }
+  // TMatrixD L2 = L.GetSub(rdim,q1-l+p-1,rdim+l-q2-1,q1-1);
+  TMatrixD L2 = L.GetSub(p-q2+r, L.GetNrows()-1,  l-q2+r, L.GetNcols()-1);
+  cout << "L2: ";  L2.Print();
   
-  // if (L1.GetNrows() < L1.GetNcols()) // So TDecompSVD works
-  //   L1.ResizeTo(L1.GetNcols(), L1.GetNcols());
+  
+  if (L1.GetNrows() < L1.GetNcols()) // So TDecompSVD works
+    L1.ResizeTo(L1.GetNcols(), L1.GetNcols());
   
   cout << "L1 = [L_11 L_12] = Vl*Sl*Zl\': ";  L1.Print();
 
@@ -2341,18 +2344,25 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   ReverseColumns(Vl);
   ReverseColumns(Zl);
 
-  // Zl.UnitMatrix();
-  // Zl(0,0) = 0;
-  // Zl(3,3) = -1;
-
+  for (int i=0; i<bl.GetNrows(); i++) 
+    beta(i) = bl(i);
+  int nl2 = L2.GetNrows();
+  for (int i=0; i<nl2; i++) 
+    beta(bl.GetNrows()+i) = L2(i,i);
+  
   cout << "bl (after reversing):";  bl.Print();
+  cout << "beta:";  beta.Print();
   cout << "Vl: ";  Vl.Print();
-  //  cout << "Vlbig: ";  Vlbig.Print();
+
+  TMatrixD Vpost(V);
+  Vpost.UnitMatrix();
+  Vpost.SetSub(p-q2,p-q2,Vl);
+  cout << "Vpost: ";  Vpost.Print();
 
   // If the dimensions don't work out, these Xl's may need to be
   // padded with unit block matrices on the diagonals.
-  V = V*Vl*PiInv;
-  cout << "V (= V*Vl, final): ";  V.Print();
+  V = V*Vpost*PiInv;
+  cout << "V (= V*Vpost, final): ";  V.Print();
   
   if (0) {
     TMatrixD Zans(4,4);
@@ -2370,8 +2380,10 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   
   cout << "Zl: ";  Zl.Print();
   cout << "Z: ";  Z.Print();
-
-  Z = Z*Zl;
+  TMatrixD Zpost(Z);
+  Zpost.UnitMatrix();
+  Zpost.SetSub(0,0,Zl);
+  Z = Z*Zpost;
   cout << "Z (final): ";  Z.Print();
 
   // 15. W = S~ * Zl
@@ -2396,14 +2408,15 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   U = U*Qw;
 
   cout << "U: ";  U.Print();
-
+  
   // Finally, assign C and S matrices
-  // Do this here, or later?
-  for (int j=0; j<l; j++) C(j,j) = alpha(j);
-  for (int i=0; i<p; i++) 
-    S(i,l-p+i) = bl(l-p+i);
-
+  for (int j=0; j<q1; j++) 
+    C(j,j) = alpha(j);
   cout << "C: ";  C.Print();
+
+  for (int i=0; i<q2; i++) 
+    S(i,l-p+i) = beta(l-p+i);
+  
   cout << "S: ";  S.Print();
 
   TMatrixD upper(C, TMatrixD::kMultTranspose, Z);
@@ -2436,12 +2449,15 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
 GSVDecompResult 
 UnfoldingUtils::GSVD(TMatrixD& A, TMatrixD& B)
 {
+
+  GSVDecompResult g;
+
   int m,p,n,r;
   m = A.GetNrows();
   n = A.GetNcols();
   p = B.GetNrows();
 
-  // Should add some checks here (m>=n>=p, An = Bn, etc.)
+  // Should add some checks here (An = Bn, ...)
 
   TMatrixD M(m+p,n);
 
@@ -2463,11 +2479,13 @@ UnfoldingUtils::GSVD(TMatrixD& A, TMatrixD& B)
   // 2. Partition Q.
   TMatrixD Q1 = Q.GetSub(0,r-1,0,r-1);
   TMatrixD Q2 = Q.GetSub(r, m+p-1, 0, r-1);  
+  bool q1Taller = Q1.GetNrows() > Q2.GetNrows();
 
   // 3. Do CS decomposition
-  CSDecompResult csd = CSDecomp(Q1, Q2);
-
-  GSVDecompResult g;
+  CSDecompResult csd = 
+    (q1Taller)? CSDecompQ1Taller(Q1, Q2) : CSDecomp(Q1, Q2);
+  
+  // 4. Assign output struct members
   g.U.ResizeTo(csd.U);
   g.V.ResizeTo(csd.V);
   g.C.ResizeTo(csd.C);
