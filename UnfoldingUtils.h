@@ -77,7 +77,8 @@ class UnfoldingUtils
   GSVDecompResult GSVD(TMatrixD& A, TMatrixD& B);
 
   // Utility methods
-  void ReverseColumns(TMatrixD& A);
+  void ReverseColumns(TMatrixD& A); // Reverse all columns in A
+  void ReverseColumns(TMatrixD& A, int col1, int col2); // col1, col2 included
   void ReverseRows(TMatrixD& A);
   void ReverseVector(TVectorD& v);
   void SwapColumns(TMatrixD &A, int col1, int col2);
