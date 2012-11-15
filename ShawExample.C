@@ -29,13 +29,15 @@ void ShawExample()
   UnfoldingUtils shaw;
   shaw.SetTrueRange(0.,1); 
   shaw.SetMeasRange(0.,1);
-  double deltab = 0.05; // Gaussian white noise on b
-  TObjArray* ShawArray = shaw.ShawSystem(n,deltab);
-  hResp = (TH2D*)ShawArray->FindObject("Shaw_A");
-  hTrue = (TH1D*)ShawArray->FindObject("Shaw_x");
-  hMeas = (TH1D*)ShawArray->FindObject("Shaw_b");
-  hMeasI = (TH1D*)ShawArray->FindObject("Shaw_b_ideal");
-  hXini = hResp->ProjectionX("hXini");
+  double deltab = 0.05; // Gaussian white noise on b (absolute)
+
+  TestProblem p = shaw.ShawSystem(n,deltab);
+  hResp  = p.Response;
+  hTrue  = p.xTruth;
+  hMeas  = p.bNoisy;
+  hMeasI = p.bIdeal;
+  hXini  = hResp->ProjectionX("hXini");
+
   statObjs->Add(hMeasI); 
   statObjs->Add(hMeas); 
   statObjs->Add(hTrue);
