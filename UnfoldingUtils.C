@@ -19,6 +19,7 @@
 #include "Math/Minimizer.h"
 #include "Math/Factory.h"
 #include "Math/Functor.h"
+#include "TF1.h"
 #include <iostream>
 #endif
 
@@ -356,10 +357,58 @@ UnfoldingUtils::DrawGSVDPlot(TObjArray* svdhists, double ymin, double ymax, TStr
   return c;
 }
 
-TObjArray*
+TestProblem
+UnfoldingUtils::MonteCarloConvolution(const int m, 
+				      const int n,
+				      const double xm1,
+				      const double xm2,
+				      const double xt1,
+				      const double xt2,
+				      TF1* truthFn, 
+				      TF1* kernelFn, 
+				      const int nEvents)
+{
+  
+  TestProblem t;
+  double dm = (xm2-xm1)/m;
+  double dt = (xt2-xt1)/n;
+  
+  // Create response matrix from kernelFn, discretized via simple colocation. 
+  TH1D* hKernel = new TH1D("hKernel", "Discretized convolution kernel", 
+			   m+n+1, -xt2-dt/4, xm2+dm/4);
+  for (int j=1; j<=2*m+1; j++) {
+    double ctr = hKernel->GetBinCenter(j);
+    double val = kernelFn->Eval(ctr);
+    hKernel->SetBinContent(j, val);
+  }
+  t.Response = BandedDiagonalMatrix(hKernel, m, n, xt1, xt2, xm1, xm2);
+  t.Response->SetTitle(Form("%d x %d convolution matrix;"
+			    "s (observed);t (true)", m, n));
+  
+  // Model a true and a measured distribution
+  // There is no bIdeal for this problem.
+  t.xTruth          = new TH1D("hTrue",     "",     n, xt1, xt2);  
+  t.xTruthEstimator = new TH1D("hTrueEst", "hTrueEst", n, xt1, xt2);  
+  t.bNoisy     = new TH1D("hMeas",     "hMeas",     m, xm1, xm2);  
+  for (Int_t i=0; i<nEvents; i++) {
+    Double_t xt = truthFn->GetRandom();
+    t.xTruthEstimator->Fill(xt);
+    Double_t xsmear = kernelFn->GetRandom();
+    t.bNoisy->Fill(xt + xsmear);
+  }
+
+  for (int j=1; j<=n; j++) {
+    double val = truthFn->Eval(t.xTruth->GetBinCenter(j));
+    t.xTruth->SetBinContent(j, val);
+  }
+  t.xTruth->Scale(nEvents/t.xTruth->Integral());
+  
+  return t;
+}
+
+TestProblem
 UnfoldingUtils::ShawSystem(const int n, double noise)
 {
-  TObjArray* arr = new TObjArray();
   TMatrixD A(n,n);
   TVectorD x(n);
   TVectorD b_ideal(n);
@@ -369,21 +418,17 @@ UnfoldingUtils::ShawSystem(const int n, double noise)
   // Add Gaussian white noise to b
   TRandom3 r3;
   for (int j=0; j<n; j++) b(j) += noise*r3.Gaus();
-  
-  TH2D* hA = Matrix2Hist(A, "Shaw_A",0.,1.,0.,1.);
-  TH1D* hx = Vec2Hist(x, 0., 1., "Shaw_x","Truth x fn.");
-  TH1D* hb = Vec2Hist(b, 0., 1., "Shaw_b","Meas. b fn.");
-  TH1D* hi = Vec2Hist(b_ideal, 0., 1., "Shaw_b_ideal","Meas. b fn.");
 
+  // Assign output struct members.
+  // No xTruthEstimator histogram for this problem. Don't ask for it!
+  TestProblem t;
+  t.Response = Matrix2Hist(A, "Shaw_A",0.,1.,0.,1.);
+  t.xTruth = Vec2Hist(x, 0., 1., "Shaw_x","Truth x fn.");
+  t.bIdeal = Vec2Hist(b_ideal, 0., 1., "Shaw_b_ideal","Meas. b fn.");
+  t.bNoisy = Vec2Hist(b, 0., 1., "Shaw_b","Meas. b fn.");
   for (int j=0; j<n; j++)
-    hb->SetBinError(j+1, noise);
-  
-  arr->Add(hA);
-  arr->Add(hx);
-  arr->Add(hb);
-  arr->Add(hi);
-
-  return arr;
+    t.bNoisy->SetBinError(j+1, noise);
+  return t;
 }
 
 void 
@@ -398,7 +443,7 @@ UnfoldingUtils::ShawSystem(const int n, TMatrixD& A, TVectorD& x, TVectorD& b, d
   // TVectorD xt(n), bt(n);      // true x and b (no noise)
   // ShawSystem(n, A, xt, bt);
   // Where n is an even integer.
-
+  
   if (n%2) {
     gROOT->Error("UnfoldingUtils::ShawSystem()", "Even binning required");
     return;
@@ -1131,8 +1176,7 @@ UnfoldingUtils::LSolve(TVectorD& result, const TMatrixD& L, const TVectorD& y,
     gROOT->Warning("LSolve()", 
 		   "Input vector length = %d != %d", ly, p);
   if (p==n) {
-    TMatrixD Linv(L);
-    Linv.Invert();
+    TMatrixD Linv(TMatrixD::kInverted, L);
     TVectorD x = Linv * y;
     result = x;
     return;
@@ -2343,8 +2387,6 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   if (l1c > L.GetNcols()-1)
     l1c = L.GetNcols()-1;
   
-    //    Error("CSDecompQ1Taller()","Problem getting L1"); // TODO Be more specific
-
   Printf("Getting L1 (%d x %d) from L (%d x %d)", l1r,l1c,L.GetNrows(),L.GetNcols());
 
   //  TMatrixD L1 = L.GetSub(p-q2,p-q2+lastrow,p-q2,l-q2+lastrow);

@@ -8,6 +8,7 @@ class TH2D;
 class TString;
 class TGraph;
 class TCanvas;
+class TF1;
 
 #include "TMatrixD.h"
 #include "TVectorD.h"
@@ -37,6 +38,22 @@ struct GSVDecompResult
   TMatrixD XT;
 };
 
+struct TestProblem
+{
+  TH2D* Response;
+  TH1D* xTruth;
+  TH1D* xTruthEstimator;
+  TH1D* bIdeal;
+  TH1D* bNoisy;
+};
+
+struct UnfoldingResult
+{
+  // x-axis: result, y-axis: k-th solution
+  TH2D* hX;
+  TGraph* LCurve;  
+};
+
 class UnfoldingUtils 
 {
  public:
@@ -55,12 +72,12 @@ class UnfoldingUtils
   // Conversion methods
   TVectorD Hist2Vec(const TH1* h);
   TMatrixD Hist2Matrix(const TH2* h);
-  TH1D* Vec2Hist(const TVectorD& v, Double_t x1, Double_t x2, TString name, TString title="");  
+  TH1D* Vec2Hist(const TVectorD& v, Double_t x1, Double_t x2, 
+		 TString name, TString title="");  
   TH2D* Matrix2Hist(TMatrixD& A, TString hName,
 		    double x1, double x2, double y1, double y2);
   TH1D* XHist(TVectorD& x, TString base, int k, double xMin, 
 	      double xMax, double normto, TString opt="");
-  //  TH2D* BandedDiagonalMatrix(TH1* hDpt, const int nMeas, const int nTrue);
   TH2D* BandedDiagonalMatrix(TH1* hDpt, 
 			     const int nMeas, 
 			     const int nTrue, 
@@ -114,10 +131,21 @@ class UnfoldingUtils
   // C. B. Shaw, Jr., "Improvements of the resolution of an instrument
   // by numerical solution of an integral equation", J. Math. Anal. Appl. 37
   // (1972), 83–112.
-  TObjArray* ShawSystem(const int n, double noise=0.);
+  TestProblem ShawSystem(const int n, double noise=0.);
   void ShawSystem(const int n, TMatrixD& A, TVectorD& x, TVectorD& b,
 		  double noise=0);
 
+  // Warning: not tested for m != n (TODO)
+  TestProblem MonteCarloConvolution(const int m, 
+				    const int n,
+				    const double xm1,
+				    const double xm2,
+				    const double xt1,
+				    const double xt2,
+				    TF1* truthFn, 
+				    TF1* kernelFn, 
+				    const int nEvents);
+  
   // Unfolding methods:
   // Preconditioned Conjugate Gradients for Least Squares
   TH1D* UnfoldPCGLS(const int nIterations, 
