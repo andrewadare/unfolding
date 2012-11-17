@@ -40,18 +40,28 @@ struct GSVDecompResult
 
 struct TestProblem
 {
-  TH2D* Response;
-  TH1D* xTruth;
-  TH1D* xTruthEstimator;
-  TH1D* bIdeal;
-  TH1D* bNoisy;
+  TH2D* Response;       // Response matrix.
+  TH1D* xTruth;         // Discrete version of true PDF.
+  TH1D* xTruthEst;      // Estimator for xTruth.
+  TH1D* bIdeal;         // Observed b, no noise.
+  TH1D* bNoisy;         // Observed b, perturbed by noise.
 };
 
 struct UnfoldingResult
 {
-  // x-axis: result, y-axis: k-th solution
+  // Solution matrix (for iterative methods, or reg. parameter scan).
+  // Sequence of results stored in a TH2. Results are slices along x.
+  // Bin k along y is the kth solution.
   TH2D* hX;
-  TGraph* LCurve;  
+  
+  // Best (maybe only?) x. Same as the k-best y slice in hX.
+  TH1D* hResult;
+
+  // Parametric curve of ||x||_2 vs. ||Ax-b||_2.
+  TGraph* LCurve;
+
+  // Best iteration or parameter index
+  // int bestIndex;
 };
 
 class UnfoldingUtils 
@@ -184,6 +194,12 @@ class UnfoldingUtils
 		       TH1* hb                  = 0, 
 		       TH1* hXini               = 0); 
   
+  UnfoldingResult UnfoldTikhonovGSVD(TVectorD& lambda, 
+				     TString opt = "",
+				     TH2* hA     = 0,
+				     TH1* hb     = 0,
+				     TH1* hXini  = 0);
+  
   // Support functions for chi squared minimization method
   double SmoothingNorm(TVectorD& x, int regtype);
   double Curvature(TVectorD& x);
@@ -194,7 +210,7 @@ class UnfoldingUtils
   void  SVDAnalysis(TObjArray* output, TH2* hA=0, TH1* hb=0, TString opt="");
   TCanvas* DrawSVDPlot(TObjArray* svdhists, double ymin, double ymax, TString opt="");
   TCanvas* DrawGSVDPlot(TObjArray* svdhists, double ymin, double ymax, TString opt="");
-
+  
   TH2D* UnfoldCovMatrix(int nTrials, 
 			int algo, 
 			double regPar, 

@@ -91,7 +91,6 @@ UnfoldingUtils::UnfoldingUtils(TH2D* hA,
 void 
 UnfoldingUtils::ComputeRescaledSystem()
 {
-
   // Matrix and vector members
   fMatA.ResizeTo(fM,fN);
   fMatAhat.ResizeTo(fM,fN);
@@ -235,7 +234,6 @@ UnfoldingUtils::SVDAnalysis(TObjArray* output, TH2* hA, TH1* hb, TString opt)
     b.ResizeTo(hb->GetNbinsX());
     b = Hist2Vec(hb);
   }
-
   if (b.GetNrows()==0) {
     if (A.GetNrows())
       b.ResizeTo(A.GetNrows());
@@ -387,12 +385,12 @@ UnfoldingUtils::MonteCarloConvolution(const int m,
   
   // Model a true and a measured distribution
   // There is no bIdeal for this problem.
-  t.xTruth          = new TH1D("hTrue",     "",     n, xt1, xt2);  
-  t.xTruthEstimator = new TH1D("hTrueEst", "hTrueEst", n, xt1, xt2);  
-  t.bNoisy     = new TH1D("hMeas",     "hMeas",     m, xm1, xm2);  
+  t.xTruth    = new TH1D("hTrue",     "",     n, xt1, xt2);  
+  t.xTruthEst = new TH1D("hTrueEst", "hTrueEst", n, xt1, xt2);  
+  t.bNoisy    = new TH1D("hMeas",     "hMeas",     m, xm1, xm2);  
   for (Int_t i=0; i<nEvents; i++) {
     Double_t xt = truthFn->GetRandom();
-    t.xTruthEstimator->Fill(xt);
+    t.xTruthEst->Fill(xt);
     Double_t xsmear = kernelFn->GetRandom();
     t.bNoisy->Fill(xt + xsmear);
   }
@@ -416,11 +414,12 @@ UnfoldingUtils::ShawSystem(const int n, double noise)
   TVectorD b(b_ideal);
 
   // Add Gaussian white noise to b
-  TRandom3 r3;
-  for (int j=0; j<n; j++) b(j) += noise*r3.Gaus();
-
+  if (noise > 0.) {
+    TRandom3 r3;
+    for (int j=0; j<n; j++) b(j) += noise*r3.Gaus();
+  }
   // Assign output struct members.
-  // No xTruthEstimator histogram for this problem. Don't ask for it!
+  // No xTruthEst histogram for this problem. Don't ask for it!
   TestProblem t;
   t.Response = Matrix2Hist(A, "Shaw_A",0.,1.,0.,1.);
   t.xTruth = Vec2Hist(x, 0., 1., "Shaw_x","Truth x fn.");
@@ -490,9 +489,11 @@ UnfoldingUtils::ShawSystem(const int n, TMatrixD& A, TVectorD& x, TVectorD& b, d
   b = A*x;
 
   // Add Gaussian white noise to b
-  TRandom3 r3;
-  for (int j=0; j<n; j++) b(j) += noise*r3.Gaus();
-
+  if (noise > 0.) {
+    TRandom3 r3;
+    for (int j=0; j<n; j++) b(j) += noise*r3.Gaus();
+  }
+  
   return;
 }
 
@@ -707,6 +708,100 @@ UnfoldingUtils::UnfoldChiSqMin(double regWt,
        "Final (regularized) chi squared = %g, curvature = %g",
        RegChi2(tmx), Curvature(x));
   return hUnf;
+}
+
+UnfoldingResult
+UnfoldingUtils::UnfoldTikhonovGSVD(TVectorD& lambda, 
+				   TString opt,
+				   TH2* hA,
+				   TH1* hb,
+				   TH1* hXini)
+{
+  UnfoldingResult result;
+  static int id=0; id++; // So this fn. can be called more than once
+  int matrixType = k2DerivBCR; // favor reflected w at boundaries
+  if (opt.Contains("BC0"))
+    matrixType = k2DerivBC0;   // favor w=0 at boundaries
+  if (opt.Contains("I"))
+    matrixType = kUnitMatrix;   // favor w=0 at boundaries
+  fTilde = (opt.Contains("~")) ? true : false;
+  
+  // Setup
+  TMatrixD A(fMatA);
+  TVectorD b(fVecb);
+  TVectorD xini(fVecXini); // All 1's if no fHistXini
+  
+  if (fTilde) {
+    A = fMatATilde;
+    b = fVecbTilde;
+  }
+  else {
+    A = fMatAhat;
+  }
+
+  // Optionally, use passed-in histos instead of members. Useful for
+  // toy MC trials in computing covariance matrix.
+  if (hA)
+    A = Hist2Matrix(hA);
+  if (hb)
+    b = Hist2Vec(hb);
+  if (hXini)
+    xini = Hist2Vec(hXini);
+  
+  // Smoothing matrix
+  TMatrixD L = LMatrix(A.GetNcols(), matrixType);
+
+  //  int m = A.GetNrows();
+  int n = A.GetNcols();
+  int p = L.GetNrows(); // Is p also g.S.GetNrows() ?
+  
+  // Number of lambda parameters to scan over
+  int k=0;  // put this in loop
+  //  int ll = lambda.GetNrows();
+
+  // Compute generalized (quotient) SVD of A and L:
+  // Result: A = UCX' and L = VSX'
+  // C matrix contains Sigma (p x p), S contains M (p x p)
+  GSVDecompResult g = GSVD(A,L);
+
+  // Useful mnemonic - alpha(0) ~ 1, beta(0) ~ 0 like cosine, sine. 
+  TVectorD alpha(p); // non-increasing
+  TVectorD beta(p);  // non-decreasing
+  TVectorD gamma(p); // non-increasing
+
+  // Tikhonov filter factors in diag(tff)
+  TMatrixD tff(n,n);
+  tff.UnitMatrix();
+  for (int i=0; i<p; i++) {
+    alpha(i) = g.C(i,i);
+    beta(i)  = g.S(i,i);
+    gamma(i) = (beta(i) > 1e-16)? alpha(i)/beta(i) : 1e16;
+    double g2 = gamma(i)*gamma(i); 
+    tff(i,i) = g2 / (g2 + lambda(k)*lambda(k));
+  }
+  
+  TMatrixD X(TMatrixD::kTransposed, g.XT);
+  TMatrixD UT(TMatrixD::kTransposed, g.U);
+  TMatrixD SI(TMatrixD::kInverted, g.C);
+  
+  TVectorD x = X*tff*SI*UT*b;
+  x.Draw();
+
+  //  gamma.Draw();gPad->SetLogy();
+
+  //XHist(x,Form("RL%d",ihist),k,x1,x2,0.,""));
+
+  // TMatrixD upper = g.U*g.C*g.XT;
+  // TMatrixD lower = g.V*g.S*g.XT;
+  // upper -= A;
+  // lower -= L;
+  // upper.Print();
+  // lower.Print();
+
+  //  alpha.Draw("");
+  //  beta.Draw("same");
+
+  return result;  
 }
 
 TH1D* 
@@ -2325,10 +2420,12 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   // r is the index, rdim is the # of values. 
   double thr = 1./TMath::Sqrt(2.);
   for (int i=0; i<l-1; i++) {
-    if (alpha(i) >= thr && alpha(i+1) < thr) {
+    // if (alpha(i) >= thr && alpha(i+1) < thr) {
+    //   r = i;
+    if (alpha(i) >= thr)
       r = i;
+    if (alpha(i+1) < thr)
       break;
-    }
   }
   if (r == -1) {
     r = 0;
@@ -2387,9 +2484,9 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   if (l1c > L.GetNcols()-1)
     l1c = L.GetNcols()-1;
   
-  Printf("Getting L1 (%d x %d) from L (%d x %d)", l1r,l1c,L.GetNrows(),L.GetNcols());
+  if (debug)
+    Printf("Getting L1 (%d x %d) from L (%d x %d)", l1r,l1c,L.GetNrows(),L.GetNcols());
 
-  //  TMatrixD L1 = L.GetSub(p-q2,p-q2+lastrow,p-q2,l-q2+lastrow);
   TMatrixD L1 = L.GetSub(p-q2, l1r, p-q2, l1c);
 
   // Get L_23 := L2
@@ -2401,23 +2498,37 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   if (col1 > L.GetNcols()-1) 
     col1 = L.GetNcols()-1;
   if (col1 < 0) col1 = 0;
-
-  Printf("Getting L2");
-  TMatrixD L2 = L.GetSub(row1, L.GetNrows()-1, col1, L.GetNcols()-1);
-  // TMatrixD L2 = L.GetSub(rdim,q1-l+p-1,rdim+l-q2-1,q1-1);
   
-  if (L1.GetNrows() < L1.GetNcols()) // So TDecompSVD works
+  if (L1.GetNrows() < L1.GetNcols()) { // So TDecompSVD works
+    if (debug)
+      Printf("Resizing L1 (%d x %d) --> (%d x %d)",
+	     L1.GetNrows(), L1.GetNcols(), L1.GetNcols(), L1.GetNcols());
     L1.ResizeTo(L1.GetNcols(), L1.GetNcols());
-
+  }
+  
+  if (debug) {
+    cout << "L1 = [L_11 L_12] = Vl*Sl*Zl\': ";  L1.Print();
+    Printf("Getting L2... row %d to %d, col %d to %d",
+	   row1, L.GetNrows()-1, col1, L.GetNcols()-1);
+  }
+  
+  TMatrixD L2 = L.GetSub(row1, L.GetNrows()-1, col1, L.GetNcols()-1);
+  
   if (debug) {
     cout << "L2: ";  L2.Print();
-    cout << "L1 = [L_11 L_12] = Vl*Sl*Zl\': ";  L1.Print();
   }
   
   // 7.
   TDecompSVD svdl(L1);
   TMatrixD Vlbig = svdl.GetU();
-  TMatrixD Vl = Vlbig.GetSub(0,r-1,0,r-1);
+  
+  int rmax = TMath::Min(r-1, V.GetNrows()-1);
+
+  if (debug)
+    Printf("Getting Vl from Vlbig (%d x %d)... row 0 to %d, col 0 to %d",
+	   Vlbig.GetNrows(), Vlbig.GetNcols(), rmax,rmax);
+
+  TMatrixD Vl = Vlbig.GetSub(0,rmax,0,rmax);
   TVectorD bl = svdl.GetSig();
   TMatrixD Zl = svdl.GetV(); 
 
@@ -2446,6 +2557,10 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   Vpost.SetSub(p-q2,p-q2,Vl);
 
   // 13.
+  Printf("V = V (%d x %d) * Vpost( %d x %d) * PiInv(%d x %d)",
+	 V.GetNrows(), V.GetNcols(), 
+	 Vpost.GetNrows(), Vpost.GetNcols(), 
+	 PiInv.GetNrows(), PiInv.GetNcols());
   V = V*Vpost*PiInv;
 
   if (debug) {
@@ -2469,8 +2584,10 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   }
 
   // 15. W = S~ * Zl
-  TMatrixD W(r+l-q2, r+l-q2);
-  for (int i=0; i<r+l-q2; i++) 
+  //  TMatrixD W(r+l-q2, r+l-q2);                          //////////////ORIG
+  TMatrixD W(Zl);
+  W.Zero();
+  for (int i=0; i<Zl.GetNcols(); i++) 
     W(i,i) = alpha(i);
   
   if (debug) {
@@ -2504,29 +2621,19 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   // Finally, assign C and S matrices
   for (int j=0; j<q1; j++) 
     C(j,j) = alpha(j);
-  if (debug) {
-    cout << "C: ";  C.Print();
-  }
-
   for (int i=0; i<q2; i++) 
     S(i,l-p+i) = beta(l-p+i);
   
   if (debug) {
+    cout << "C: ";  C.Print();
     cout << "S: ";  S.Print();
-  }
-
-  TMatrixD upper(C, TMatrixD::kMultTranspose, Z);
-  upper = U*upper;
-  TMatrixD lower(S, TMatrixD::kMultTranspose, Z);
-  lower = V*lower;
-
-  upper = Q1-upper;
-  lower = Q2-lower;
-
-  if (debug) {
+    TMatrixD upper(C, TMatrixD::kMultTranspose, Z);
+    TMatrixD lower(S, TMatrixD::kMultTranspose, Z);
+    upper = U*upper;
+    upper = Q1-upper;
+    lower = V*lower;
+    lower = Q2-lower;
     cout << "Q1 - U*C*Z\': ";  upper.Print();
-  }
-  if (debug) {
     cout << "Q2 - V*S*Z\': ";  lower.Print();
   }
 
@@ -2549,9 +2656,7 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
 GSVDecompResult 
 UnfoldingUtils::GSVD(TMatrixD& A, TMatrixD& B)
 {
-
   GSVDecompResult g;
-
   int m,p,n,r;
   m = A.GetNrows();
   n = A.GetNcols();
@@ -2565,20 +2670,26 @@ UnfoldingUtils::GSVD(TMatrixD& A, TMatrixD& B)
   TMatrixDSub(M, 0, m-1,   0, n-1) += A;
   TMatrixDSub(M, m, m+p-1, 0, n-1) += B;
   r = Rank(M);
-  Printf("Rank(M): %d", r);
 
   TDecompSVD svdM(M);
-  TMatrixD Q  = svdM.GetU();
-  TMatrixD Z  = svdM.GetV();
+  TMatrixD Q  = svdM.GetU(); // m+p x m+p
+  TMatrixD Z  = svdM.GetV(); //   n x n
   TVectorD sv = svdM.GetSig();
+
+  if (1)
+    Printf("Rank(M): %d. M = QSZ\', Q (%d x %d) Z (%d x %d)", 
+	   r, Q.GetNrows(), Q.GetNcols(), Z.GetNrows(), Z.GetNcols());
 
   TMatrixD Sr(r,r); // Sigma_r submatrix from Sigma
   for (int i=0; i<r; i++) 
     Sr(i,i) = sv(i);
 
   // 2. Partition Q.
-  TMatrixD Q1 = Q.GetSub(0,r-1,0,r-1);
-  TMatrixD Q2 = Q.GetSub(r, m+p-1, 0, r-1);  
+  // TMatrixD Q1 = Q.GetSub(0,r-1,0,r-1);
+  // TMatrixD Q2 = Q.GetSub(r, m+p-1, 0, r-1);  
+
+  TMatrixD Q1 = Q.GetSub(0,m-1,0,n-1);
+  TMatrixD Q2 = Q.GetSub(m, m+p-1, 0, n-1);  
   bool q1Taller = Q1.GetNrows() > Q2.GetNrows();
 
   // 3. Do CS decomposition
