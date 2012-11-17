@@ -35,7 +35,7 @@ void ConvolutionExample()
   
   hResp = t.Response;
   hTrue = t.xTruth;
-  hTrueData = t.xTruthEstimator;
+  hTrueData = t.xTruthEst;
   hMeas = t.bNoisy;
 
   // Create UnfoldingUtils instance
