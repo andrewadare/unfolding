@@ -11,7 +11,6 @@ TObjArray* histsRL = new TObjArray();
 TObjArray* extrasRL = new TObjArray();
 TObjArray* histsPCGLS = new TObjArray();
 TObjArray* extrasPCGLS = new TObjArray();
-TObjArray* svdHists = new TObjArray();
 TObjArray* svdResid = new TObjArray();
 TObjArray* genSvdAna = new TObjArray();
 TObjArray* svdAnim = new TObjArray();
@@ -50,12 +49,38 @@ void ShawExample()
   for (int i=0; i<n; i++)
     hXini->SetBinContent(i+1,1.0);
 
-
   UnfoldingUtils uu(hResp, hMeas, 0, hXini, hTrue);
 
-  // SVD Picard plot -------------------------------------------------
+  // SVD analysis plot -----------------------------------------------
   // -----------------------------------------------------------------
-  uu.SVDAnalysis(svdHists);
+  SVDResult svdhists = uu.SVDAnalysis(0,0,"~");
+  uu.DrawSVDPlot(svdhists, 1e-5, 1e10);
+  DrawObject(svdhists.U, "surf");
+
+  // GSVD analysis plot ----------------------------------------------
+  // -----------------------------------------------------------------
+  double lambdaGSVD = 0.3;
+  TMatrixD L = uu.LMatrix(n, UnfoldingUtils::k2DerivBC0);
+  GSVDResult gsvd = uu.GSVDAnalysis(L,lambdaGSVD,0,0,"");
+  DrawObject(gsvd.U, "surf");
+  DrawObject(gsvd.UTbAbs,"pl");
+  gsvd.UTbAbs->GetYaxis()->SetRangeUser(1e-5, 1e5);
+  gPad->SetLogy();
+  gsvd.coeffAbs->Draw("plsame");
+  gsvd.regcAbs->Draw("plsame");
+
+  DrawObject(hMeas, "pl", "Shaw test problem;x", cList);
+  hMeasI->Draw("plsame");
+  hTrue->Draw("plsame");
+  gsvd.xreg->Draw("plsame");
+
+  // // General-form Tikhonov algorithm using GSVD ----------------------
+  // // -----------------------------------------------------------------
+  // TVectorD lambdaGSVD(1);
+  // lambdaGSVD(0) = 5.0;
+  // UnfoldingResult rg = uu.UnfoldTikhonovGSVD(lambdaGSVD, "BC0,^");
+
+  return;  
 
   // PCGLS algorithm -------------------------------------------------
   // -----------------------------------------------------------------
@@ -66,16 +91,16 @@ void ShawExample()
   // -----------------------------------------------------------------
   int nIterRL = 500;
   TH1D* hX0 = hMeas; // Initial guess or "prior"
-  uu.UnfoldRichardsonLucy(nIterRL, histsRL, extrasRL, "", hX0);
+  uu.UnfoldRichardsonLucy(nIterRL, histsRL, extrasRL, "~", hX0);
   
   // SVD method (A. Hocker) ------------------------------------------
   // -----------------------------------------------------------------
   TString svdBC = "BC0, ~"; // Favor x=0 at edges (Reflect with "BCR")
   double lambda = 5.0;
   hSVD = uu.UnfoldSVD(lambda, genSvdAna, svdBC);
-  if (1) { // Scan lambda regularization values
-    double stepSize = 0.1;
-    for (int i=0; i<100; i++) {
+  if (0) { // Scan lambda regularization values
+    double stepSize = 0.2;
+    for (int i=0; i<50; i++) {
       lambda = stepSize*i;
       TH1D* h = uu.UnfoldSVD(lambda, svdResid, svdBC);
       svdAnim->Add(h);
@@ -84,7 +109,7 @@ void ShawExample()
     DrawObject(an, "", "SVD", cList, 700, 500);
   }
 
-  uu.DrawSVDPlot(svdHists, 1e-18, 1e18);
+  //  uu.DrawSVDPlot(svdHists, 1e-18, 1e18);
   uu.DrawGSVDPlot(genSvdAna, 1e-5, 1e2);
 
   if (0) {
@@ -138,7 +163,7 @@ void DrawAll()
   TGraph* rlLCurve = (TGraph*)extrasRL->At(0);
   DrawObject(rlLCurve, "alp", "", cList);
 
-  TGraphTime* anim1 = Animation(histsPCGLS, statObjs, "pl", 500 /*ms*/);
+  TGraphTime* anim1 = Animation(histsPCGLS, statObjs, "pl", 200 /*ms*/);
   DrawObject(anim1, "1", "PCGLS", cList, 700, 500);
 
   TGraphTime* anim2 = Animation(histsRL, statObjs, "pl", 0 /*ms*/);

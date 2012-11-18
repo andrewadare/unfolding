@@ -13,7 +13,6 @@ class TF1;
 #include "TMatrixD.h"
 #include "TVectorD.h"
 
-
 struct QRDecompResult
 {
   TMatrixD Q;
@@ -27,24 +26,59 @@ struct CSDecompResult
   TMatrixD U;
   TMatrixD V;
   TMatrixD Z;
+  TVectorD alpha;        // Diag(C). Size l (CSD) = n (GSVD).
+  TVectorD beta;         // Diag(S). Size l (CSD) = n (GSVD).
 };
 
-struct GSVDecompResult
+struct GSVDecompResult   // Output from GSVD().
 {
+  // Result of quotient aka generalized SVD of A,B.
+  // A = U*C*XT, B = V*S*XT.
   TMatrixD C;
   TMatrixD S;
   TMatrixD U;
   TMatrixD V;
   TMatrixD XT;
+
+  TVectorD alpha;        // Diag(C). Size n. Nonincreasing.
+  TVectorD beta;         // Diag(S). Size n. Nondecreasing.
+  TVectorD gamma;        // alpha/beta. Nonincreasing.
 };
 
-struct TestProblem
+struct TestProblem       // Output from test problem generator.
 {
-  TH2D* Response;       // Response matrix.
-  TH1D* xTruth;         // Discrete version of true PDF.
-  TH1D* xTruthEst;      // Estimator for xTruth.
-  TH1D* bIdeal;         // Observed b, no noise.
-  TH1D* bNoisy;         // Observed b, perturbed by noise.
+  TH2D* Response;        // Response matrix.
+  TH1D* xTruth;          // Discrete version of true PDF.
+  TH1D* xTruthEst;       // Estimator for xTruth.
+  TH1D* bIdeal;          // Observed b, no noise.
+  TH1D* bNoisy;          // Observed b, perturbed by noise.
+};
+
+struct SVDResult         // Output from SVDAnalysis().
+{
+  TH1D* sigma;           // Singular value spectrum.
+  TH1D* UTb;             // Left sing. vectors * b.
+  TH1D* UTbAbs;          // |U'*b| (mainly for plotting)
+  TH1D* coeff;           // SV coefficients uTb/sigma
+  TH2D* U;               // Left sing. vectors
+};
+
+struct GSVDResult        // Output from GSVDAnalysis().
+{
+  double lambda;         // Regularization parameter
+  TH1D* f;               // Tikhonov filter factors
+  TH1D* alpha;           // C(n-p,n-p)..C(n,n) (size p)
+  TH1D* beta;            // S(n-p,n-p)..S(n,n) (size p)
+  TH1D* gamma;           // alpha/beta
+  TH1D* UTb;             // Left sing. vectors * b.
+  TH1D* UTbAbs;          // |U'*b| (mainly for plotting)
+  TH1D* coeff;           // SV coefficients uT*b/alpha
+  TH1D* coeffAbs;        // |uT*b|/alpha (for plotting)
+  TH1D* regc;            // Regularized (filtered) coeffs.
+  TH1D* regcAbs;         // Regularized (filtered) coeffs.
+  TH2D* U;               // Left sing. vectors
+  TH2D* X;               // Inverse of GSVDecompResult::XT
+  TH1D* xreg;            // Regularized solution x_lambda
 };
 
 struct UnfoldingResult
@@ -121,7 +155,7 @@ class UnfoldingUtils
   TMatrixD LMatrix(const int n, const int kind, double eps = 1.e-5);
   TMatrixD DerivativeMatrix(int n, int d);
   TVectorD ElemMult(const TVectorD& x, const TVectorD& y);
-  TVectorD ElemDiv (const TVectorD& x, const TVectorD& y);
+  TVectorD ElemDiv (const TVectorD& x, const TVectorD& y, double div0val = 0.);
   TMatrixD MultRowsByVector(const TMatrixD& M, const TVectorD& v);
   TMatrixD DivColsByVector(const TMatrixD& M, const TVectorD& v, bool makeZeroIfNaN=true);
   TMatrixD OuterProduct(TVectorD a, TVectorD b); // a*b'
@@ -207,8 +241,9 @@ class UnfoldingUtils
   
   // Analysis methods
   TGraph* ResidualNorm(TObjArray* hists, double stepSize = 1.);
-  void  SVDAnalysis(TObjArray* output, TH2* hA=0, TH1* hb=0, TString opt="");
-  TCanvas* DrawSVDPlot(TObjArray* svdhists, double ymin, double ymax, TString opt="");
+  SVDResult SVDAnalysis(TH2* hA=0, TH1* hb=0, TString opt="");
+  GSVDResult GSVDAnalysis(TMatrixD& L, double lambda=0, TH2* hA=0, TH1* hb=0, TString opt="");
+  TCanvas* DrawSVDPlot(SVDResult, double ymin, double ymax, TString opt="");
   TCanvas* DrawGSVDPlot(TObjArray* svdhists, double ymin, double ymax, TString opt="");
   
   TH2D* UnfoldCovMatrix(int nTrials, 
