@@ -57,12 +57,11 @@ void ShawExample()
   uu.DrawSVDPlot(svdhists, 1e-5, 1e10);
   DrawObject(svdhists.U, "surf");
 
-  // GSVD analysis plot ----------------------------------------------
+  // GSVD analysis ---------------------------------------------------
   // -----------------------------------------------------------------
-  double lambdaGSVD = 0.3;
   TMatrixD L = uu.LMatrix(n, UnfoldingUtils::k2DerivBC0);
-  GSVDResult gsvd = uu.GSVDAnalysis(L,lambdaGSVD,0,0,"");
-  DrawObject(gsvd.U, "surf");
+  GSVDResult gsvd = uu.GSVDAnalysis(L, 1.0);
+  DrawObject(gsvd.UHist, "surf");
   DrawObject(gsvd.UTbAbs,"pl");
   gsvd.UTbAbs->GetYaxis()->SetRangeUser(1e-5, 1e5);
   gPad->SetLogy();
@@ -72,14 +71,17 @@ void ShawExample()
   DrawObject(hMeas, "pl", "Shaw test problem;x", cList);
   hMeasI->Draw("plsame");
   hTrue->Draw("plsame");
-  gsvd.xreg->Draw("plsame");
+  gsvd.xregHist->Draw("plsame");
 
-  // // General-form Tikhonov algorithm using GSVD ----------------------
-  // // -----------------------------------------------------------------
-  // TVectorD lambdaGSVD(1);
-  // lambdaGSVD(0) = 5.0;
-  // UnfoldingResult rg = uu.UnfoldTikhonovGSVD(lambdaGSVD, "BC0,^");
-
+  // General-form Tikhonov algorithm using GSVD ----------------------
+  // -----------------------------------------------------------------
+  int nLambda = 100; double l1 = 0.01, l2 = 1.01;
+  TVectorD regVector(nLambda);
+  for (int k=0; k<nLambda; k++) 
+    regVector(k) = (l2-l1)/nLambda*(k+1);
+  
+  UnfoldingResult rg = uu.UnfoldTikhonovGSVD(gsvd, regVector);
+  rg.XRegHist->Draw("surf");
   return;  
 
   // PCGLS algorithm -------------------------------------------------

@@ -65,20 +65,35 @@ struct SVDResult         // Output from SVDAnalysis().
 
 struct GSVDResult        // Output from GSVDAnalysis().
 {
-  double lambda;         // Regularization parameter
-  TH1D* f;               // Tikhonov filter factors
-  TH1D* alpha;           // C(n-p,n-p)..C(n,n) (size p)
-  TH1D* beta;            // S(n-p,n-p)..S(n,n) (size p)
-  TH1D* gamma;           // alpha/beta
-  TH1D* UTb;             // Left sing. vectors * b.
-  TH1D* UTbAbs;          // |U'*b| (mainly for plotting)
-  TH1D* coeff;           // SV coefficients uT*b/alpha
-  TH1D* coeffAbs;        // |uT*b|/alpha (for plotting)
-  TH1D* regc;            // Regularized (filtered) coeffs.
+  int n;                 // Column count of A (or L)
+  int p;                 // Row count of L
+  double lambda;         // Regularization parameter used
+  TVectorD alpha;        // alpha(i<n-p) = 1, else C(n-p,n-p)..C(n,n).
+  TVectorD beta;         // beta(i<n-p)  = 0, else S(n-p,n-p)..S(n,n).
+  TVectorD gamma;        // alpha/beta. Valid for gamma(i >= n-p).
+  TVectorD f;            // Tik. filter factors. Size n. f(i<n-p) = 1.
+  TVectorD UTb;          // Left sing. vectors * b. (n)
+  TVectorD coeff;        // GSV coeffs uT*b/alpha. (n)
+  TVectorD regc;         // Regularized (filtered) coeffs. (n)
+  TMatrixD X;            // Inverse of X' from GSVD (n x n)
+  TMatrixD U;            // Columns = left sing. vectors of A (m x m)
+  TMatrixD V;            // Columns = left sing. vectors of L (p x p)
+  TMatrixD L;            // Smoothing matrix used (p x n)
+  TMatrixD A;            // Coefficient matrix used (m x n)
+  TVectorD b;            // Measured RHS vector used (m)
+  TVectorD bInc;         // Incompatible b component (I-UU')b (m x m)
+
+  TH2D* UHist;           // Left sing. vectors
+  TH2D* XHist;           // Inverse of GSVDecompResult::XT
+
+  // Solution for this lambda
+  TH1D* wregHist;        // xini-scaled result w^lambda
+  TH1D* xregHist;        // xini_j * w^lambda_j (solution)
+
+  // Abs. values (for visual analysis)
+  TH1D* coeffAbs;        // |uT*b|/alpha
   TH1D* regcAbs;         // Regularized (filtered) coeffs.
-  TH2D* U;               // Left sing. vectors
-  TH2D* X;               // Inverse of GSVDecompResult::XT
-  TH1D* xreg;            // Regularized solution x_lambda
+  TH1D* UTbAbs;          // |U'*b|
 };
 
 struct UnfoldingResult
@@ -86,7 +101,8 @@ struct UnfoldingResult
   // Solution matrix (for iterative methods, or reg. parameter scan).
   // Sequence of results stored in a TH2. Results are slices along x.
   // Bin k along y is the kth solution.
-  TH2D* hX;
+  TMatrixD XReg;
+  TH2D* XRegHist;
   
   // Best (maybe only?) x. Same as the k-best y slice in hX.
   TH1D* hResult;
@@ -228,11 +244,9 @@ class UnfoldingUtils
 		       TH1* hb                  = 0, 
 		       TH1* hXini               = 0); 
   
-  UnfoldingResult UnfoldTikhonovGSVD(TVectorD& lambda, 
-				     TString opt = "",
-				     TH2* hA     = 0,
-				     TH1* hb     = 0,
-				     TH1* hXini  = 0);
+  UnfoldingResult UnfoldTikhonovGSVD(GSVDResult& gsvd,
+				     TVectorD& lambda, 
+				     TString opt = "");
   
   // Support functions for chi squared minimization method
   double SmoothingNorm(TVectorD& x, int regtype);

@@ -335,9 +335,6 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   int p = L.GetNrows();
 
   GSVDecompResult g = GSVD(A,L);
-  TVectorD alpha = g.alpha.GetSub(n-p,n-1);
-  TVectorD beta  =  g.beta.GetSub(n-p,n-1);
-  TVectorD gamma = g.gamma.GetSub(n-p,n-1);
   TMatrixD UT(TMatrixD::kTransposed, g.U);
   TMatrixD X(TMatrixD::kInverted, g.XT);
   TVectorD utb(UT*b);
@@ -353,42 +350,63 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
     else
       f(i) = 1.0;
   }
-  TVectorD regc = ElemMult(f,c);
-  TVectorD xreg = X*regc;
 
-  // Absolute value vectors (for plotting)
+  TVectorD regc = ElemMult(f,c);
+  TVectorD wreg = X*regc;
+  TVectorD xreg = ElemMult(fVecXini, wreg);
+
+  // Save to output for parameter optimization analysis
+  result.bInc.ResizeTo(m);
+  result.bInc = (LMatrix(m,kUnitMatrix) - g.U * UT)*b;
+
+  // Assign output struct members
+  result.n      = n;
+  result.p      = p;
+  result.lambda = lambda;
+  result.alpha.ResizeTo(n);  result.alpha  = g.alpha;
+  result.beta .ResizeTo(n);  result.beta   = g.beta;
+  result.gamma.ResizeTo(n);  result.gamma  = g.gamma;
+  result.f    .ResizeTo(n);  result.f      = f;
+  result.UTb  .ResizeTo(n);  result.UTb    = utb;
+  result.coeff.ResizeTo(n);  result.coeff  = c;
+  result.regc .ResizeTo(n);  result.regc   = regc;
+
+  // Copy A,L,and b to output to ensure that the correct quantities
+  // are used later.
+  result.X.ResizeTo(X);      result.X = X;
+  result.U.ResizeTo(g.U);    result.U = g.U;
+  result.V.ResizeTo(g.V);    result.V = g.V;
+  result.L.ResizeTo(L);      result.L = L;
+  result.A.ResizeTo(A);      result.A = A;
+  result.b.ResizeTo(b);      result.b = b;
+
+  result.UHist  = Matrix2Hist(g.U, Form("U_gsvd_%d",id),
+			      fTrueX1, fTrueX2,0,m);
+  result.XHist  = Matrix2Hist(X, Form("X_gsvd_%d",id),
+			      fTrueX1, fTrueX2,0,m);
+  result.wregHist = Vec2Hist(wreg, fTrueX1,fTrueX2,
+			     Form("gsvd_wreg_%d",id), 
+			     Form("w (#lambda = %g)", lambda));
+  result.xregHist = Vec2Hist(xreg, fTrueX1,fTrueX2,
+			     Form("gsvd_xreg_%d",id),
+  			     Form("x (#lambda = %g)", lambda));
+  // Absolute values for plotting
   TVectorD utbAbs(utb);
   TVectorD cAbs(c);
   TVectorD rcAbs(regc);
-
   for (int i=0; i<n; i++) {
     if (utbAbs(i) < 0) utbAbs(i) *= -1;
     if (cAbs(i) < 0)     cAbs(i) *= -1;
     if (rcAbs(i) < 0)   rcAbs(i) *= -1;
   }
-
-  result.U      = Matrix2Hist(g.U, Form("U_gsvd_%d",id),0,m,0,m);
-  result.alpha  = Vec2Hist(alpha,n-p,n,Form("alpha%d",id), "#alpha_{i}");
-  result.beta   = Vec2Hist(beta,n-p,n,Form("beta%d", id), "#beta_{i}");
-  result.gamma  = Vec2Hist(gamma,n-p,n,Form("gamma%d",id), "#gamma_{i}");
-  result.f      = Vec2Hist(f,0,n,Form("tik_filt%d",id), "Tikhonov filter factors");
-  result.UTb    = Vec2Hist(utb, 0,n,Form("gsvd_utb%d",id), "u^{T}_{i}#upointb ");
-  result.coeff  = Vec2Hist(c,0,n,Form("coeff%d",id),"GSVD coeffs.");
-  result.regc   = Vec2Hist(regc, 0,n,Form("regc%d",id),"filtered coeffs.");
-
-  result.UTbAbs  = Vec2Hist(utbAbs, 0,n,Form("gsvd_utb_abs%d",id), "#||{u^{T}#upointb} ");
+  result.UTbAbs   = Vec2Hist(utbAbs, 0,n,Form("gsvd_utb_abs%d",id), "#||{u^{T}#upointb} ");
   result.coeffAbs = Vec2Hist(cAbs, 0,n,Form("gsvd_c_abs%d",id), "#||{u^{T}#upointb}/#alpha ");
-  result.regcAbs = Vec2Hist(rcAbs, 0,n,Form("gsvd_rc_abs%d",id), "f#||{u^{T}#upointb}/#alpha ");
+  result.regcAbs  = Vec2Hist(rcAbs, 0,n,Form("gsvd_rc_abs%d",id), "f#||{u^{T}#upointb}/#alpha ");
 
-  result.xreg = Vec2Hist(xreg, fTrueX1,fTrueX2,
-			 Form("gsvd_xreg_%d",id), "GSVD solution");
-
-  SetTH1Props(result.alpha, kBlack, 0, kBlack, kFullCircle, 1.0);
   SetTH1Props(result.UTbAbs,   kBlue, 0, kBlue, kFullSquare, 1.0);
   SetTH1Props(result.coeffAbs, kRed, 0, kRed, kOpenSquare, 1.0);
   SetTH1Props(result.regcAbs, kMagenta+1, 0, kMagenta+1, kOpenCircle, 1.0);
-
-  SetTH1Props(result.xreg, kGreen+2, 0, kGreen+2, kFullCircle, 1.0);
+  SetTH1Props(result.xregHist, kGreen+2, 0, kGreen+2, kFullCircle, 1.0);
 
   return result;
 }
@@ -818,78 +836,68 @@ UnfoldingUtils::UnfoldChiSqMin(double regWt,
 }
 
 UnfoldingResult
-UnfoldingUtils::UnfoldTikhonovGSVD(TVectorD& lambda, 
-				   TString opt,
-				   TH2* hA,
-				   TH1* hb,
-				   TH1* hXini)
+UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult& gsvd,
+				   TVectorD& lambda, 
+				   TString /*opt*/)
 {
   UnfoldingResult result;
   static int id=0; id++; // So this fn. can be called more than once
-  int matrixType = k2DerivBCR; // favor reflected w at boundaries
-  if (opt.Contains("BC0"))
-    matrixType = k2DerivBC0;   // favor w=0 at boundaries
-  if (opt.Contains("I"))
-    matrixType = kUnitMatrix;   // favor w=0 at boundaries
-  fTilde = (opt.Contains("~")) ? true : false;
-  
-  // Setup
-  TMatrixD A(fMatA);
-  TVectorD b(fVecb);
-  TVectorD xini(fVecXini); // All 1's if no fHistXini
-  
-  if (fTilde) {
-    A = fMatATilde;
-    b = fVecbTilde;
-  }
-  else {
-    A = fMatAhat;
-  }
 
-  // Optionally, use passed-in histos instead of members. Useful for
-  // toy MC trials in computing covariance matrix.
-  if (hA)
-    A = Hist2Matrix(hA);
-  if (hb)
-    b = Hist2Vec(hb);
-  if (hXini)
-    xini = Hist2Vec(hXini);
-  
-  // Smoothing matrix
-  TMatrixD L = LMatrix(A.GetNcols(), matrixType);
+  int nk = lambda.GetNrows();
+  int n  = gsvd.n;
+  int p  = gsvd.p;
+  result.XReg.ResizeTo(n, nk);
 
-  //  int m = A.GetNrows();
-  int n = A.GetNcols();
-  int p = L.GetNrows(); // Is p also g.S.GetNrows() ?
-  
-  // Number of lambda parameters to scan over
-  int k=0;  // put this in loop
-  //  int ll = lambda.GetNrows();
-
-  // Compute generalized (quotient) SVD of A and L:
-  // Result: A = UCX' and L = VSX'
-  // C matrix contains Sigma (p x p), S contains M (p x p)
-  GSVDecompResult g = GSVD(A,L);
-
-  // Tikhonov filter factors
-  TVectorD f(n);
-  for (int i=0; i<n; i++) {
-    if (i >= n-p) {
-      double g2 = g.gamma(i)*g.gamma(i); 
-      f(i) = g2 / (g2 + lambda(k)*lambda(k));
+  // Scan over lambda values, generate nk solutions
+  for (int k=0; k<nk; k++) {
+    
+    // Create Tikhonov filter factors for this lambda
+    double l = lambda(k);
+    TVectorD f(n);
+    for (int i=0; i<n; i++) {
+      if (i >= n-p) {
+	double g2 = gsvd.gamma(i)*gsvd.gamma(i); 
+	f(i) = g2 / (g2 + l*l);
+      }
+      else
+	f(i) = 1.0;
     }
-    else
-      f(i) = 1.0;
-  }
-  
-  TMatrixD X(TMatrixD::kTransposed, g.XT);
-  TMatrixD UT(TMatrixD::kTransposed, g.U);
-  TVectorD coeff = ElemDiv(UT*b, g.alpha);
-  coeff = ElemMult(f, coeff);
-  TVectorD w = X*coeff;
-  TVectorD x = ElemMult(xini,w);
+    
+    // Damped GSVD coefficients
+    TVectorD regc = ElemMult(f, gsvd.coeff);
+    TVectorD wreg = gsvd.X*regc;
+    TVectorD xreg = ElemMult(fVecXini, wreg);
 
-  return result;  
+    // Regularized solution
+    for (int j=0; j<n; j++)
+      result.XReg(j,k) = xreg(j);
+
+    // Parameter optimization analysis
+    // -------------------------------
+
+    // Compute Lx_reg
+    TVectorD tmp = ElemDiv(utb, gsvd.gamma);
+    tmp = ElemMult(f, tmp);
+    TVectorD Lx = tmp.GetSub(n-p, n-1);
+    Lx = gsvd.V * Lx;
+
+    // Compute b - Ax_reg
+    
+
+  }
+
+
+
+
+  // *** Compute Lx_reg
+  // *** Compute b - Ax_reg
+  // *** L-Curve
+  // *** GCV curve
+
+  result.XRegHist = Matrix2Hist(result.XReg, Form("xregHist_%d",id),
+				fTrueX1, fTrueX2,lambda(0),lambda(nk-1));
+  result.XRegHist->SetTitle("GSVD solutions;x;#lambda");
+  return result;
 }
 
 TH1D* 
