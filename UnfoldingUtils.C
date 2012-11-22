@@ -211,6 +211,26 @@ UnfoldingUtils::SetMeasRange(double x1, double x2)
   fMeasX2 = x2;
 }
 
+TMatrixD
+UnfoldingUtils::GetA(TString opt)
+{
+  if (opt.Contains("^"))
+    return fMatAhat;
+  else if (opt.Contains("~"))
+    return fMatATilde;
+  else
+    return fMatA;
+}
+
+TVectorD
+UnfoldingUtils::Getb(TString opt)
+{
+  if (opt.Contains("~"))
+    return fVecbTilde;
+  else
+    return fVecb;
+}
+
 SVDResult 
 UnfoldingUtils::SVDAnalysis(TH2* hA, TH1* hb, TString opt)
 {
@@ -299,21 +319,12 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   static int id = 0; id++;
   GSVDResult result;
 
-  fTilde = (opt.Contains("~")) ? true : false;
-
   // Use stored members: 
-  // Select A, \hat{A}, or \tilde{A} using opt
-  TMatrixD A(fMatA);
-  TVectorD b(fVecb);
-  if (fTilde) {
-    A = fMatATilde;
-    b = fVecbTilde;
-  }
-  else if (opt.Contains("^")) {
-    A = fMatAhat;
-  }
+  // Select A, \hat{A}, or \tilde{A} ("", "^", or "~")
+  TMatrixD A = GetA(opt);
+  TVectorD b = Getb(opt);
 
-  // Or, use passed-in histograms
+  // Or, use passed-in histograms (supercedes opt)
   if (hA) {
     A.ResizeTo(hA->GetNbinsX(), hA->GetNbinsY());
     A = Hist2Matrix(hA);
@@ -321,13 +332,6 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   if (hb) {
     b.ResizeTo(hb->GetNbinsX());
     b = Hist2Vec(hb);
-  }
-  if (b.GetNrows()==0) {
-    if (A.GetNrows())
-      b.ResizeTo(A.GetNrows());
-    else
-      Warning("UnfoldingUtils::SVDAnalysis()", 
-	      "Unspecified dimension of b vector");
   }
 
   int m = A.GetNrows();
@@ -361,6 +365,7 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
 
   // Assign output struct members
   result.n      = n;
+  result.m      = m;
   result.p      = p;
   result.lambda = lambda;
   result.alpha.ResizeTo(n);  result.alpha  = g.alpha;
@@ -845,8 +850,13 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult& gsvd,
 
   int nk = lambda.GetNrows();
   int n  = gsvd.n;
+  int m  = gsvd.m; 
   int p  = gsvd.p;
   result.XReg.ResizeTo(n, nk);
+  result.LCurve = new TGraph(nk);
+  result.GcvCurve = new TGraph(nk);
+  result.lambdaGcv = 0;
+  double gcvMin = 1e99;
 
   // Scan over lambda values, generate nk solutions
   for (int k=0; k<nk; k++) {
@@ -872,27 +882,41 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult& gsvd,
     for (int j=0; j<n; j++)
       result.XReg(j,k) = xreg(j);
 
-    // Parameter optimization analysis
-    // -------------------------------
+    // Parameter optimization analysis -------------------------------
+    // ---------------------------------------------------------------
 
     // Compute Lx_reg
-    TVectorD tmp = ElemDiv(utb, gsvd.gamma);
-    tmp = ElemMult(f, tmp);
-    TVectorD Lx = tmp.GetSub(n-p, n-1);
+    TVectorD vec = ElemDiv(gsvd.UTb, gsvd.gamma);
+    vec = ElemMult(f, vec);
+    TVectorD Lx = vec.GetSub(n-p, n-1);
     Lx = gsvd.V * Lx;
+    double lxnorm = TMath::Sqrt(Lx*Lx);
 
-    // Compute b - Ax_reg
-    
+    // Compute r = b - Ax_reg
+    TVectorD f1(f);
+    for (int j=0; j<n; j++)
+      f1(j) = 1-f(j);
+    vec = ElemMult(f1, gsvd.UTb);
+    TMatrixD Up = gsvd.U.GetSub(0,m-1,m-p,m-1); // m x p
+    TVectorD r = Up * vec.GetSub(n-p, n-1) - gsvd.bInc;
+    double rnorm = TMath::Sqrt(r*r);
+
+    double gcv = rnorm / (m - f.Sum());
+
+    result.LCurve->SetPoint(k, rnorm, lxnorm);
+    result.GcvCurve->SetPoint(k, lambda(k), gcv);
+    if (gcv < gcvMin) {
+      gcvMin = gcv;
+      result.lambdaGcv = lambda(k);
+      result.kGcv = k;
+    }
 
   }
 
 
-
-
-  // *** Compute Lx_reg
-  // *** Compute b - Ax_reg
-  // *** L-Curve
-  // *** GCV curve
+  result.LCurve->SetTitle("GSVD L-Curve;||Ax_{#lambda}-b||_{2};||Lx_{#lambda}||_{2}");
+  result.GcvCurve->SetTitle("GSVD cross-validation curve;"
+			    "#lambda;G(#lambda)");
 
   result.XRegHist = Matrix2Hist(result.XReg, Form("xregHist_%d",id),
 				fTrueX1, fTrueX2,lambda(0),lambda(nk-1));
@@ -1054,53 +1078,38 @@ UnfoldingUtils::UnfoldSVD(double lambda,
   return hx;
 }
 
-TH1D* 
+UnfoldingResult
 UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations, 
-				     TObjArray* hists,
-				     TObjArray* extras,
 				     TString opt, 
-				     const TH1* hXStart, 
-				     const TH2* hA,
-				     const TH1* hb,
-				     const TH1* hXini)
+				     const TH1* hXStart)
 {
   // See eq. (4.3), J. Bardsley & C. Vogel, 
   // SIAM J. SCI. COMPUT. Vol. 25, No. 4, pp. 1326–1343
   
+  UnfoldingResult result;
   static int ihist = 0; ihist++;       // Unique ID
-  fTilde = (opt.Contains("~")) ? true : false;
 
-  TMatrixD A(fMatA);
-  TVectorD b(fVecb);
-  TVectorD xini(fVecXini); // All 1's if no fHistXini
+  result.LCurve = new TGraph(nIterations);
+  result.GcvCurve = new TGraph(nIterations);
+  result.lambdaGcv = 0;
+  //  double gcvMin = 1e99;
+  result.LCurve->SetNameTitle(Form("LCurve_RL_%d",ihist), 
+			      Form("Richardson-Lucy L-Curve;"
+				   "Residual norm ||Ax_{k}-b||_{2};"
+				   "Solution norm ||x_{k}||_{2}"));
+  TMatrixD A = GetA(opt);
+  TVectorD b = Getb(opt);
+  TVectorD xini(fVecXini);
   TVectorD ones(fM); 
   for (int i=0; i<fM; i++) 
     ones(i)=1.0;
-  
-  if (fTilde) {
-    A = fMatATilde;
-    b = fVecbTilde;
-  }
-  else if (opt.Contains("^")) {
-    A = fMatAhat;
-    b = fVecb;
-  }
-  
-  if (hA) 
-    A = Hist2Matrix(hA);
-  if (hb) 
-    b = Hist2Vec(hb);
-  if (hXini) {
-    xini = Hist2Vec(hXini);
-  }
-  
+
+  result.WReg.ResizeTo(fN, nIterations);
+  result.XReg.ResizeTo(fN, nIterations);
+
+  // Prior vector x0 must be positive
   TVectorD x0 = (hXStart)? Hist2Vec(hXStart) : ones;
-
-  // x0 must be positive
   for (int j=0; j<x0.GetNrows(); j++) {
-
-    //    Printf("RL: xini(%d) = %g", j, xini(j));
-
     if (x0(j)<=0) {
       Warning("UnfoldingUtils::UnfoldRichardsonLucy()",
 	      "Initial point x0(%d) = %g must be positive, "
@@ -1109,73 +1118,73 @@ UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations,
     }
   }
   
-  double x1 = fTrueX1;
-  double x2 = fTrueX2;
-  if (hXStart) {
-    x1 = hXStart->GetXaxis()->GetXmin();
-    x2 = hXStart->GetXaxis()->GetXmax();
-  }
-
-  TMatrixD AT(TMatrixD::kTransposed, A);// AT.T();
+  double x1 = fTrueX1, x2 = fTrueX2;
+  double hx1 = hXStart->GetXaxis()->GetXmin();
+  double hx2 = hXStart->GetXaxis()->GetXmax();
+  if (hx1 != x1)
+    Warning("UnfoldingUtils::UnfoldRichardsonLucy()",
+	    "hXStart x1 %g != stored x1 %g", hx1, x1);
+  if (hx2 != x2)
+    Warning("UnfoldingUtils::UnfoldRichardsonLucy()",
+	    "hXStart x2 %g != stored x2 %g", hx2, x2);
+  
+  TMatrixD AT(TMatrixD::kTransposed, A);
   TVectorD x(x0);
-  TVectorD bvar(ones); // Variance of meas. data
-  if (!fTilde)
-    for (int i=0; i<fM; i++) 
-      bvar(i) = fMatB(i,i);
+  TVectorD bvar(fM); // Variance of meas. data
+  for (int i=0; i<fM; i++)
+    bvar(i) = fMatB(i,i);
+  
   b += bvar;
 
-  // L-curve graph - one point per iteration
-  TGraph* gL = 0;
-  if (extras) {
-    gL = new TGraph(nIterations);
-    gL->SetLineColor(kRed);
-    gL->SetMarkerColor(kRed);
-    gL->SetMarkerStyle(kFullCircle);
-    gL->SetMarkerSize(1.5);
-    gL->SetLineWidth(2);
-    gL->SetNameTitle(Form("LCurve_RL_%d",ihist), 
-		     Form("Richardson-Lucy L-Curve;"
-			  "Residual norm ||Ax_{k}-b||_{2};"
-			  "Solution norm ||x_{k}||_{2}"));
-  }
-
-  for (int k=0; k<=nIterations; k++) {
-    printf("Richardson-Lucy iteration %d\r", k);
+  for (int k=0; k<nIterations; k++) {
+    printf("Richardson-Lucy iteration %d\r", k+1);
   
-    if (k > 0) {
       TVectorD Ax = A*x + bvar; 
       TVectorD r = ElemDiv(b, Ax);
       TVectorD ATr = AT*r;
       TVectorD AT1 = AT*ones; // efficiency correction factor
       TVectorD xoverAT1 = ElemDiv(x, AT1);
       x = ElemMult(xoverAT1, ATr);
-
-      if (fTilde) 
+      TVectorD resid = A*x-b;
+      double rnorm = TMath::Sqrt(resid*resid);
+      double xnorm = TMath::Sqrt(x*x);
+  
+      for (int j=0; j<fN; j++)
+	result.WReg(j,k) = x(j);
+      
+      if (fTilde)
 	x = ElemMult(x,xini);
-
-      if (gL) {    // Set L-Curve points
-	TVectorD resid = A*x-b;
-	gL->SetPoint(k-1, TMath::Sqrt(resid*resid), TMath::Sqrt(x*x));
-      }
-    }
-
-    if (hists) { // Save nth iterate as a TH1D
-      hists->Add(XHist(x,Form("RL%d",ihist),k,x1,x2,0.,""));
-    }
+      
+      for (int j=0; j<fN; j++)
+	result.XReg(j,k) = x(j);
+      
+      result.LCurve->SetPoint(k,rnorm,xnorm);
   } // end iteration loop
   cout << endl;
 
-  TH1D* hx=0;
-  if (hists)
-    hx = (TH1D*)hists->At(nIterations);
-  else {
-      hx = XHist(x,Form("RL%d",ihist),nIterations,x1,x2,0.,"");
-  }
-  if (extras) {
-    if (gL) extras->Add(gL);
-  }
+  result.XRegHist = Matrix2Hist(result.XReg, Form("X_RL_%d",ihist),
+				fTrueX1,fTrueX2,0,nIterations);
+  
+  /*
+  result.wregHist = Vec2Hist(wreg, fTrueX1,fTrueX2,
+  			     Form("gsvd_wreg_%d",id), 
+  			     Form("w (#lambda = %g)", lambda));
+  result.xregHist = Vec2Hist(xreg, fTrueX1,fTrueX2,
+			     Form("gsvd_xreg_%d",id),
+			     Form("x (#lambda = %g)", lambda));
+  */
 
-  return hx;
+  // TH1D* hx=0;
+  // if (hists)
+  //   hx = (TH1D*)hists->At(nIterations);
+  // else {
+  //     hx = XHist(x,Form("RL%d",ihist),nIterations,x1,x2,0.,"");
+  // }
+  // if (extras) {
+  //   if (gL) extras->Add(gL);
+  // }
+
+  return result;
 }
 
 TH1D*
@@ -1237,7 +1246,7 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
     gL->SetNameTitle(Form("LCurve_PCGLS_%d",ihist), 
 		     Form("PCGLS L-Curve;"
 			  "Residual norm ||Ax_{k}-b||_{2};"
-			  "Solution norm ||x_{k}||_{2}"));
+			  "Solution norm ||Lx_{k}||_{2}"));
   }
 
   if (0) {  
@@ -1319,7 +1328,7 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
       z = q + beta*z;
 
       if (gL)    // Set L-Curve points
-	gL->SetPoint(n-1, TMath::Sqrt(r*r), TMath::Sqrt(x*x));
+	gL->SetPoint(n-1, TMath::Sqrt(r*r), TMath::Sqrt((L*x)*(L*x)));
     }
     
     if (hists) { // Save nth iterate as a TH1D

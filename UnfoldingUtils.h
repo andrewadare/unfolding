@@ -66,6 +66,7 @@ struct SVDResult         // Output from SVDAnalysis().
 struct GSVDResult        // Output from GSVDAnalysis().
 {
   int n;                 // Column count of A (or L)
+  int m;                 // Row count of A
   int p;                 // Row count of L
   double lambda;         // Regularization parameter used
   TVectorD alpha;        // alpha(i<n-p) = 1, else C(n-p,n-p)..C(n,n).
@@ -75,7 +76,7 @@ struct GSVDResult        // Output from GSVDAnalysis().
   TVectorD UTb;          // Left sing. vectors * b. (n)
   TVectorD coeff;        // GSV coeffs uT*b/alpha. (n)
   TVectorD regc;         // Regularized (filtered) coeffs. (n)
-  TMatrixD X;            // Inverse of X' from GSVD (n x n)
+  TMatrixD X;            // Columns = GSVD basis vectors (n x n)
   TMatrixD U;            // Columns = left sing. vectors of A (m x m)
   TMatrixD V;            // Columns = left sing. vectors of L (p x p)
   TMatrixD L;            // Smoothing matrix used (p x n)
@@ -84,7 +85,7 @@ struct GSVDResult        // Output from GSVDAnalysis().
   TVectorD bInc;         // Incompatible b component (I-UU')b (m x m)
 
   TH2D* UHist;           // Left sing. vectors
-  TH2D* XHist;           // Inverse of GSVDecompResult::XT
+  TH2D* XHist;           // GSVD basis vectors
 
   // Solution for this lambda
   TH1D* wregHist;        // xini-scaled result w^lambda
@@ -101,17 +102,21 @@ struct UnfoldingResult
   // Solution matrix (for iterative methods, or reg. parameter scan).
   // Sequence of results stored in a TH2. Results are slices along x.
   // Bin k along y is the kth solution.
+  TMatrixD WReg;
   TMatrixD XReg;
   TH2D* XRegHist;
   
   // Best (maybe only?) x. Same as the k-best y slice in hX.
   TH1D* hResult;
 
-  // Parametric curve of ||x||_2 vs. ||Ax-b||_2.
+  // Parametric curve of ||Lx||_2 vs. ||Ax-b||_2.
   TGraph* LCurve;
 
-  // Best iteration or parameter index
-  // int bestIndex;
+  // Generalized cross-validation curve,
+  // and best lambda & iteration / index
+  TGraph* GcvCurve;
+  double lambdaGcv;
+  int kGcv;
 };
 
 class UnfoldingUtils 
@@ -218,14 +223,9 @@ class UnfoldingUtils
 		    const TH1* hXini            = 0);
   
   // Richardson-Lucy algorithm
-  TH1D* UnfoldRichardsonLucy(const int nIterations, 
-			     TObjArray* hists   = 0,
-			     TObjArray* extras  = 0, 
-			     TString opt        = "",
-			     const TH1* hXStart = 0,
-			     const TH2* hA      = 0,
-			     const TH1* hb      = 0,
-			     const TH1* hXini   = 0);
+  UnfoldingResult UnfoldRichardsonLucy(const int nIterations, 
+				       TString opt        = "",
+				       const TH1* hXStart = 0);
   
   // Regularized Hocker/Kartvilishveli SVD algorithm
   TH1D* UnfoldSVD(double lambda, 
@@ -279,13 +279,10 @@ class UnfoldingUtils
   Int_t GetNMeasBins()      const {return fM;}         // Number of measured bins
   Int_t GetN()              const {return fN;}         // Number of true/generated bins
   Int_t GetNTrueBins()      const {return fN;}         // Number of true/generated bins
-  TMatrixD GetA()           const {return fMatA;}      // "Counts" matrix
-  TMatrixD GetAProb()       const {return fMatAhat;}   // Prob matrix - cols sum to 1.0
-  TMatrixD GetATilde()      const {return fMatATilde;} // A, scaled using error of b
+  TMatrixD GetA(TString opt = "");                     // "^", "~", or ""
+  TVectorD Getb(TString opt = "");                     // "~" or ""
   TMatrixD GetbCovariance() const {return fMatB;}      // Error matrix of b
   TMatrixD GetbBinv()       const {return fMatBinv;}   // Inverse error matrix of b
-  TVectorD Getb()           const {return fVecb;}      // vector of measured data points
-  TVectorD GetbTilde()      const {return fVecbTilde;} // b, scaled by its error
   TVectorD GetxTrue()       const {return fVecXtrue;}  // b, scaled by its error
   TH2D* GetAProbHist() 	    const {return fHistAProb;}
   TH2D* GetAHist()          const {return fHistA;}
@@ -296,7 +293,7 @@ class UnfoldingUtils
   TH1D* GetXTrueHist()      const {return fHistXtrue;}
   TH1D* GetEffHist()        const {return fHistEff;}
 
-  // Smoothing matrix types (W is Null(L))
+  // Smoothing matrix types (& descriptions of W = Null(L))
   enum LType{kUnitMatrix, // n   x n, W=0 
 	     k1DerivNoBC, // n-1 x n, W=const 
 	     k2DerivNoBC, // n-2 x n, W=const, linear
