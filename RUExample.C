@@ -43,11 +43,11 @@ TH1D* hRL=0;
 
 // Output containers
 TObjArray* cList = new TObjArray();
-TObjArray* histsRL = new TObjArray();
-TObjArray* extrasRL = new TObjArray();
-TObjArray* histsCG = new TObjArray();
-TObjArray* extrasCG = new TObjArray();
-TObjArray* svdHists = new TObjArray();
+// TObjArray* histsRL = new TObjArray();
+// TObjArray* extrasRL = new TObjArray();
+// TObjArray* histsCG = new TObjArray();
+// TObjArray* extrasCG = new TObjArray();
+// TObjArray* svdHists = new TObjArray();
 TObjArray* gsvdHists = new TObjArray();
 TObjArray* statObjs = new TObjArray();
 
@@ -129,20 +129,19 @@ void RUExample()
   
   // Richardson-Lucy algorithm ---------------------------------------
   // -----------------------------------------------------------------
-  int nIterRL = 8;
-  TH1D* hX0 = data->Clone("hX0"); // prior
+  int nIterRL = 10;
+  TH1D* hX0 = data->Clone("hX0"); // use measurement as prior
   hX0->Smooth(5);
-  UnfoldingResult rl = uu.UnfoldRichardsonLucy(nIterRL, "^");
+  UnfoldingResult rl = uu.UnfoldRichardsonLucy(nIterRL, "^", hX0);
   hRL = rl.XRegHist->ProjectionX(Form("rl%d",nIterRL),nIterRL,nIterRL);
-
-  //  hRL = uu.UnfoldRichardsonLucy(nIterRL, histsRL, extrasRL, "^", hX0);
 
   // -----------------------------------------------------------------
   // Draw
   // -----------------------------------------------------------------
   SetHistProps(datatrue, kBlack, kNone, kBlack, kFullCircle, 1.0);
   SetHistProps(data, kBlue, kNone, kBlue, kOpenSquare, 1.0);
-  SetHistProps(hSVD, kGreen+2, kNone, kGreen+2, kOpenCircle, 1.0);
+  SetHistProps(hSVD, kGreen, kNone, kGreen, kOpenCircle, 1.0);
+  SetHistProps(rg.hGcv, kGreen+2, kNone, kGreen+2, kOpenCircle, 1.0);
   SetHistProps(hCG, kRed, kNone, kRed, kOpenCircle, 1.5);
   SetHistProps(hCh2, kMagenta+2, kNone, kMagenta+2, kFullCircle, 1.0);
   SetHistProps(hRL, kRed+2, kNone, kRed+2, kOpenCircle, 1.2);
@@ -168,11 +167,12 @@ void RUExample()
   DrawObject(datatrue, "ep");
   data->Draw("epsame");
   hSVD->Draw("epsame");
+  rg.hGcv->Draw("epsame");
   hCh2->Draw("epsame");
   hCG->Draw("epsame");
   hRL->Draw("epsame");
 
-  return;
+  /*
   // Covariance matrices
   if (0) {
     // Regularization covariance from SVD method
@@ -188,16 +188,14 @@ void RUExample()
     for (int j=0; j<hSVD->GetNbinsX(); j++)
       hSVD->SetBinError(j, TMath::Sqrt(hXcov->GetBinContent(j,j)));
   }
+  */
 
   // Animations
   statObjs->Add(datatrue);
   statObjs->Add(data);
 
-  CopyProps(hRL, histsRL);
-  CopyProps(hCG, histsCG);
-
-  TGraphTime* aRL = Animation(histsRL, statObjs, "ep", 100 /*ms*/);
-  TGraphTime* aCG = Animation(histsCG, statObjs, "ep", 100 /*ms*/);
+  TGraphTime* aRL = Animation(rl.XRegHist, statObjs, "ep", 100, kRed+2);
+  TGraphTime* aCG = Animation(cg.XRegHist, statObjs, "ep", 100, kRed);
 
   if (0) {
     DrawObject(aRL, "2", "Richardson-Lucy", cList, 700, 500);
