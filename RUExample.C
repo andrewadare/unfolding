@@ -12,25 +12,26 @@
 //
 // Four unfolding methods are applied from UnfoldingUtils.
 
-Int_t nbins = 40;
-double xt1 = -10., xt2=10.;
-double xm1 = -10., xm2=10.;
+Int_t nbins = 40;           // square problem (m = n)
+double xt1 = -10., xt2=10.; // range of true variable
+double xm1 = -10., xm2=10.; // range of meas variable
 
 TH1D *xini = new TH1D("xini", 
-		      "Black - MC truth (Breit-Wigner), "
-		      "Blue - reconstructed;x;counts",nbins,xt1,xt2);
+		      "Black: MC truth (Breit-Wigner), "
+		      "Blue: reconstructed;x;counts",nbins,xt1,xt2);
 TH1D *bini = new TH1D("bini","MC reco",nbins,xm1,xm2);
 TH2D *Adet = new TH2D("Adet","detector response",
 		      nbins,xm1,xm2,nbins,xt1,xt2);
 TH1D *data = new TH1D("data","data",nbins,xm1,xm2);
 TH1D *datatrue = new TH1D("datatrue", 
-			  "Black - data truth (Gaussian), "
-			  "Blue - reconstructed;x;counts",
+			  "Black: data truth (Gaussian), "
+			  "Blue: reconstructed;x;counts",
 			  nbins,xm1,xm2);
 TH2D *statcov = new TH2D("statcov", "covariance matrix", 
 			 nbins,xm1,xm2,nbins,xt1,xt2);
 TH1D* hxeff = (TH1D*)xini->Clone("hxeff");
 
+TLatex lt;
 TRandom3 R;
 const Double_t cutdummy= -99999.0;
 
@@ -70,6 +71,37 @@ void RUExample()
   FillDistributions();
   UnfoldingUtils uu(Adet, data, 0, xini, datatrue, hxeff);
 
+  // SVD and GSVD analysis of the system -----------------------------
+  // -----------------------------------------------------------------
+  SVDResult svd = uu.SVDAnalysis(0,0,"~");
+  uu.DrawSVDPlot(svd, 1e-4, 1e4);
+
+  TMatrixD L = uu.LMatrix(nbins, UnfoldingUtils::k2DerivBC0);
+  GSVDResult gsvd = uu.GSVDAnalysis(L,100,0,0,"~");
+  uu.DrawGSVDPlot(gsvd, 1e-4, 2e2);
+
+  // General-form Tikhonov algorithm using GSVD ----------------------
+  // -----------------------------------------------------------------
+  int nLambda = 50;
+  TVectorD regVector(nLambda);
+  for (int k=0; k<nLambda; k++) 
+    regVector(k) = k+50;
+  
+  UnfoldingResult rg = uu.UnfoldTikhonovGSVD(gsvd, regVector);
+  DrawObject(rg.XRegHist, "surf");
+  DrawObject(rg.GcvCurve, "alp");
+  SetGraphProps(rg.GcvCurve,kMagenta+2,kMagenta+2,kFullCircle,0.5);
+  lt.DrawLatex(0.2, 0.8, Form("#lambda_{min} = %g at k = %d", 
+			      rg.lambdaGcv, rg.kGcv));
+  TGraph* ggcv = new TGraph(1); 
+  ggcv->SetPoint(0,rg.lambdaGcv,rg.GcvCurve->GetY()[rg.kGcv]);
+  SetGraphProps(ggcv,kRed,kRed,kOpenCircle,2);
+  ggcv->SetLineWidth(2);
+  ggcv->Draw("psame");
+  
+  DrawObject(rg.LCurve, "alp");
+  SetGraphProps(rg.LCurve,kBlue,kBlue,kFullCircle,0.5);
+
   // SVD algorithm ---------------------------------------------------
   // -----------------------------------------------------------------
   double lambda = 50.0;
@@ -77,22 +109,33 @@ void RUExample()
 
   // Chi squared minimization ----------------------------------------
   // -----------------------------------------------------------------
+  TVectorD regWts(40);
+  for (int k=0; k<40; k++)
+    regWts(k) = (k+1)*2e-5;
   uu.SetRegType(UnfoldingUtils::kTotCurv);
-  double regwt = 5e-4;
-  hCh2 = uu.UnfoldChiSqMin(regwt, 0, "");
+  UnfoldingResult cs = uu.UnfoldChiSqMin(regWts);
+  DrawObject(cs.LCurve,"alp");
+  SetGraphProps(cs.LCurve,kBlue,kBlue,kFullCircle,0.5);
+  hCh2 = cs.XRegHist->ProjectionX(Form("cs%d",20),20,20);
 
   // PCGLS algorithm -------------------------------------------------
   // -----------------------------------------------------------------
   int nCG = 9;
-  hCG = uu.UnfoldPCGLS(nCG, histsCG, extrasCG, 
-		       UnfoldingUtils::k2DerivBC0, "~",0,0,xini);
-
+  UnfoldingResult cg = 
+    uu.UnfoldPCGLS(nCG, UnfoldingUtils::k2DerivBC0,"~");
+  DrawObject(cg.LCurve,"alp");
+  SetGraphProps(cg.LCurve,kBlue,kBlue,kFullCircle,0.5);
+  hCG = cg.XRegHist->ProjectionX(Form("cg%d",5),5,5);
+  
   // Richardson-Lucy algorithm ---------------------------------------
   // -----------------------------------------------------------------
   int nIterRL = 8;
-  TH1D* hX0 = data->Clone("hX0"); // Initial guess or "prior"
+  TH1D* hX0 = data->Clone("hX0"); // prior
   hX0->Smooth(5);
-  hRL = uu.UnfoldRichardsonLucy(nIterRL, histsRL, extrasRL, "^", hX0);
+  UnfoldingResult rl = uu.UnfoldRichardsonLucy(nIterRL, "^");
+  hRL = rl.XRegHist->ProjectionX(Form("rl%d",nIterRL),nIterRL,nIterRL);
+
+  //  hRL = uu.UnfoldRichardsonLucy(nIterRL, histsRL, extrasRL, "^", hX0);
 
   // -----------------------------------------------------------------
   // Draw
@@ -129,11 +172,7 @@ void RUExample()
   hCG->Draw("epsame");
   hRL->Draw("epsame");
 
-  // SVD analysis of the system
-  uu.SVDAnalysis(svdHists);
-  uu.DrawSVDPlot(svdHists, 1e-4, 1e4);
-  uu.DrawGSVDPlot(gsvdHists, 5e-3, 100);
-
+  return;
   // Covariance matrices
   if (0) {
     // Regularization covariance from SVD method

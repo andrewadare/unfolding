@@ -9,7 +9,7 @@ TH1D* hTrueData=0;
 TH1D* hMeas=0;
 
 // Unfolding solutions
-TH1D* hSVD=0;
+// TH1D* hSVD=0;
 TH1D* hRL=0;
 TH1D* hCh2=0;
 
@@ -41,18 +41,26 @@ void ConvolutionExample()
   // Create UnfoldingUtils instance
   // Use measured data as guess for solution. Clone possible only for m = n.
   TH2D* hMeasCov = 0;
-  TH1D* hEff  = hResp->ProjectionY("hEff");
+  TH1D* hEff = hResp->ProjectionY("hEff");
   UnfoldingUtils uu(hResp, hMeas, hMeasCov, 0, 0, hEff);
 
   // Richardson-Lucy algorithm ---------------------------------------
   // -----------------------------------------------------------------
   int nIterRL = 200;
-  hRL = uu.UnfoldRichardsonLucy(nIterRL);
-
+  UnfoldingResult rl = uu.UnfoldRichardsonLucy(nIterRL);
+  hRL = rl.XRegHist->ProjectionX(Form("rl%d",nIterRL),nIterRL,nIterRL);
+  
   // Chi squared minimization ----------------------------------------
   // -----------------------------------------------------------------
+  TVectorD regWts(100);
+  for (int k=0; k<100; k++)
+    regWts(k) = (k+1)*2e-5;
   uu.SetRegType(UnfoldingUtils::kTotCurv);
-  hCh2 = uu.UnfoldChiSqMin(5e-4);
+  UnfoldingResult cs = uu.UnfoldChiSqMin(regWts);
+  DrawObject(cs.XRegHist,"surf");  
+  hCh2 = cs.XRegHist->ProjectionX(Form("cs%d",50),50,50); // arb. guess for now
+  DrawObject(cs.LCurve,"alp");
+  SetGraphProps(cs.LCurve,kBlue,kBlue,kFullCircle,0.5);
 
   // SVD algorithm ---------------------------------------------------
   // -----------------------------------------------------------------
@@ -70,11 +78,11 @@ void ConvolutionExample()
   SetHistProps(hSVD, kGreen+2, kNone, kGreen+2, kOpenCircle, 1.0);
   // SetHistProps(hCG, kRed, kNone, kRed, kOpenCircle, 1.5);
   SetHistProps(hCh2, kMagenta+2, kNone, kMagenta+2, kFullCircle, 1.0);
+
   SetHistProps(hRL, kRed+2, kNone, kRed+2, kOpenCircle, 1.2);
 
-  // Do SVD analysis, put results in hists array
-  TObjArray* hists = new TObjArray();
-  uu.SVDAnalysis(hists, hResp, hMeas, "U");
+  // Do SVD analysis
+  SVDResult svd = uu.SVDAnalysis();
 
   // Draw response matrix
   DrawObject(hResp, "col", "", cList, 500, 500);
@@ -97,10 +105,11 @@ void ConvolutionExample()
   l1->AddEntry(hCh2, Form("#chi^{2} minimization method", nIterRL), "epl");
   l1->Draw();
 
+
   // Draw a few of the left singular vectors
   TH1D* hu[999];
   for (int i=0; i<n; i++) {
-    hu[i] = (TH1D*)hists->FindObject(Form("SV_u_%d",i));
+    hu[i] = svd.U->ProjectionX(Form("u_%d",i),i+1,i+1);
     hu[i]->SetLineWidth(2);
     hu[i]->SetTitle(Form("Left singular vector u_{%d};Column index",i));
   }
@@ -119,16 +128,13 @@ void ConvolutionExample()
   SetHistProps(hu[0], kAzure-2, kNone, kAzure-2, kFullCircle, 0.8);
   hu[0]->Draw("plsame");
 
+
   // Draw the s.v. spectrum
-  TH1D* hsig = hists->FindObject("hsig1");
-  hsig->SetTitle("Singular values;Column index;#sigma_{i}");
-  SetHistProps(hsig, kBlack, kNone, kBlack, kFullCircle, 0.8);
-  hsig->SetLineWidth(2);
-  DrawObject(hsig, "p", "", cList, 500, 500);
+  DrawObject(svd.sigma, "p", "", cList, 500, 500);
   gPad->SetLogy();
 
   // Draw s.v. coefficients |u_i'*b|
-  cList->Add(uu.DrawSVDPlot(hists, 0.2, 1e9));
+  cList->Add(uu.DrawSVDPlot(svd, 0.2, 1e9));
 
   if (1)
     PrintPDFs(cList, "./outputs");

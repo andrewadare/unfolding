@@ -106,17 +106,16 @@ struct UnfoldingResult
   TMatrixD XReg;
   TH2D* XRegHist;
   
-  // Best (maybe only?) x. Same as the k-best y slice in hX.
-  TH1D* hResult;
-
   // Parametric curve of ||Lx||_2 vs. ||Ax-b||_2.
   TGraph* LCurve;
+  TH1D* hLbest; // Best unfolding result (according to L-Curve)
 
   // Generalized cross-validation curve,
   // and best lambda & iteration / index
   TGraph* GcvCurve;
   double lambdaGcv;
   int kGcv;
+  TH1D* hGcv; // Best unfolding result (according to GCV)
 };
 
 class UnfoldingUtils 
@@ -213,14 +212,12 @@ class UnfoldingUtils
   
   // Unfolding methods:
   // Preconditioned Conjugate Gradients for Least Squares
-  TH1D* UnfoldPCGLS(const int nIterations, 
-		    TObjArray* hists            = 0,
-		    TObjArray* extras           = 0, 
-		    int lMatrixType             = k2DerivBCR,
-		    TString opt                 = "",
-		    const TH2* hA               = 0, 
-		    const TH1* hb               = 0, 
-		    const TH1* hXini            = 0);
+  UnfoldingResult UnfoldPCGLS(const int nIterations, 
+			      int lMatrixType             = k2DerivBCR,
+			      TString opt                 = "",
+			      const TH2* hA               = 0, 
+			      const TH1* hb               = 0, 
+			      const TH1* hXini            = 0);
   
   // Richardson-Lucy algorithm
   UnfoldingResult UnfoldRichardsonLucy(const int nIterations, 
@@ -236,13 +233,9 @@ class UnfoldingUtils
 		  TH1* hXini                    = 0);
   
   // Regularized chi squared minimization algorithm
-  TH1D* UnfoldChiSqMin(double regWt, 
-		       TObjArray* output        = 0, 
-		       TString opt              = "",
-		       TH1* hXStart             = 0, 
-		       TH2* hA                  = 0, 
-		       TH1* hb                  = 0, 
-		       TH1* hXini               = 0); 
+  UnfoldingResult UnfoldChiSqMin(TVectorD& regWts, 
+				 TString opt              = "",
+				 TH1* hXStart             = 0); 
   
   UnfoldingResult UnfoldTikhonovGSVD(GSVDResult& gsvd,
 				     TVectorD& lambda, 
@@ -258,7 +251,8 @@ class UnfoldingUtils
   SVDResult SVDAnalysis(TH2* hA=0, TH1* hb=0, TString opt="");
   GSVDResult GSVDAnalysis(TMatrixD& L, double lambda=0, TH2* hA=0, TH1* hb=0, TString opt="");
   TCanvas* DrawSVDPlot(SVDResult, double ymin, double ymax, TString opt="");
-  TCanvas* DrawGSVDPlot(TObjArray* svdhists, double ymin, double ymax, TString opt="");
+  TCanvas* DrawGSVDPlot(GSVDResult, double ymin, double ymax, TString opt="");
+  //  TCanvas* DrawGSVDPlot(TObjArray* svdhists, double ymin, double ymax, TString opt="");
   
   TH2D* UnfoldCovMatrix(int nTrials, 
 			int algo, 

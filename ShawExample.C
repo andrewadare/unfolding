@@ -7,10 +7,6 @@ TH2D *hResp=0, *hRespT=0;       // Response matrix & transpose
 TH1D* hSVD=0;
 
 TObjArray* cList = new TObjArray();
-TObjArray* histsRL = new TObjArray();
-TObjArray* extrasRL = new TObjArray();
-TObjArray* histsPCGLS = new TObjArray();
-TObjArray* extrasPCGLS = new TObjArray();
 TObjArray* svdResid = new TObjArray();
 TObjArray* genSvdAna = new TObjArray();
 TObjArray* svdAnim = new TObjArray();
@@ -64,11 +60,8 @@ void ShawExample()
   TMatrixD L = uu.LMatrix(n, UnfoldingUtils::k2DerivBC0);
   GSVDResult gsvd = uu.GSVDAnalysis(L, 0.38);
   DrawObject(gsvd.UHist, "surf");
-  DrawObject(gsvd.UTbAbs,"pl");
-  gsvd.UTbAbs->GetYaxis()->SetRangeUser(1e-5, 1e5);
-  gPad->SetLogy();
-  gsvd.coeffAbs->Draw("plsame");
-  gsvd.regcAbs->Draw("plsame");
+
+  uu.DrawGSVDPlot(gsvd, 1e-5, 1e2);
 
   DrawObject(hMeas, "pl", "Shaw test problem;x", cList);
   hMeasI->Draw("plsame");
@@ -83,14 +76,13 @@ void ShawExample()
     regVector(k) = 0.02*(k+1);
 
   UnfoldingResult rg = uu.UnfoldTikhonovGSVD(gsvd, regVector);
-  rg.XRegHist->SetFillColor(kCyan);
   rg.XRegHist->Draw("surf");
 
   DrawObject(rg.GcvCurve, "alp");
   SetGraphProps(rg.GcvCurve,kMagenta+2,kMagenta+2,kFullCircle,0.5);
   lt.DrawLatex(0.2, 0.8, Form("#lambda_{min} = %g at k = %d", 
 			      rg.lambdaGcv, rg.kGcv));
-  TGraph* ggcv = new TGraph(1); 
+  TGraph* ggcv = new TGraph(1);
   ggcv->SetPoint(0,rg.lambdaGcv,rg.GcvCurve->GetY()[rg.kGcv]);
   SetGraphProps(ggcv,kRed,kRed,kOpenCircle,2);
   ggcv->SetLineWidth(2);
@@ -103,17 +95,38 @@ void ShawExample()
   // -----------------------------------------------------------------
   int nIterPCGLS = 7;
   int LMatrixType = UnfoldingUtils::k2DerivBC0;
-  uu.UnfoldPCGLS(nIterPCGLS,histsPCGLS,extrasPCGLS,LMatrixType);
+  UnfoldingResult cg = uu.UnfoldPCGLS(nIterPCGLS,LMatrixType);
+  DrawObject(cg.XRegHist,"surf");
 
+  SetGraphProps(cg.LCurve,kRed,kRed,kFullCircle,1.2);
+  DrawObject(cg.LCurve, "alp");
+  TLatex ltx;
+  ltx.SetTextColor(kRed);
+  for (int k=0; k<cg.LCurve->GetN(); k++) {
+    double x = cg.LCurve->GetX()[k];
+    double y = cg.LCurve->GetY()[k];
+    ltx.DrawLatex(x, y, Form("%d", k+1)); 
+  }
+
+  TGraphTime* anim1 = Animation(cg.XRegHist, statObjs, "pl", 200 /*ms*/, 
+				kRed, kOpenCircle);
+  DrawObject(anim1, "1", "PCGLS", cList, 700, 500);
+  
   // Richardson-Lucy algorithm ---------------------------------------
   // -----------------------------------------------------------------
   int nIterRL = 500;
-  TH1D* hX0 = hMeas; // Initial guess or "prior"
-  uu.UnfoldRichardsonLucy(nIterRL, "", hX0);
+  TH1D* hX0 = hMeas; // prior
+  UnfoldingResult rl = uu.UnfoldRichardsonLucy(nIterRL, "", hX0);
+  DrawObject(rl.XRegHist,"surf");
+  SetGraphProps(rl.LCurve,kRed+2,kRed+2,kFullCircle,0.5);
+  DrawObject(rl.LCurve, "alp", "", cList);
+  TGraphTime* anim2 = Animation(rl.XRegHist, statObjs, "pl", 0,
+				kRed+2,kFullCircle);
+  DrawObject(anim2, "2", "Richardson-Lucy", cList, 700, 500);
   
   // SVD method (A. Hocker) ------------------------------------------
   // -----------------------------------------------------------------
-  TString svdBC = "BC0, ~"; // Favor x=0 at edges (Reflect with "BCR")
+  TString svdBC = "BC0,~"; // Favor x=0 at edges (Reflect with "BCR")
   double lambda = 5.0;
   hSVD = uu.UnfoldSVD(lambda, genSvdAna, svdBC);
   if (0) { // Scan lambda regularization values
@@ -126,9 +139,6 @@ void ShawExample()
     TGraphTime* an = Animation(svdAnim, statObjs, "pl", 100 /*ms*/);
     DrawObject(an, "", "SVD", cList, 700, 500);
   }
-
-  //  uu.DrawSVDPlot(svdHists, 1e-18, 1e18);
-  uu.DrawGSVDPlot(genSvdAna, 1e-5, 1e2);
 
   if (0) {
     TGraph* svdRes = uu.ResidualNorm(svdResid, stepSize);
@@ -144,64 +154,21 @@ void ShawExample()
   // TH2D* hXcov = (TH2D*)genSvdAna->FindObject("hXcov1");
   // DrawObject(hXcov, "colz");
 
-
-  //  return;
-
-  DrawAll();
-}
-
-void DrawAll()
-{
   DrawObject(hResp, "colz", "Response matrix;x_{meas};x_{true}", cList, 550, 500);
   gPad->SetRightMargin(0.15);
-  
-  // PCGLS hist properties
-  for (int i=0; i<histsPCGLS->GetEntries(); i++) {
-    TH1D* h = (TH1D*)histsPCGLS->At(i);
-    SetHistProps(h, kRed, kNone, kRed, kOpenCircle, 1.5);
-  }
-  // Richardson-Lucy hist properties
-  // for (int i=0; i<histsRL->GetEntries(); i++) {
-  //   TH1D* h = (TH1D*)histsRL->At(i);
-  //   SetHistProps(h, kRed+2, kNone, kRed+2, kOpenCircle, 1.5);
-  // }
-  
-  // L-Curves  
-  TGraph* pcgLCurve = (TGraph*)extrasPCGLS->At(0);
-  DrawObject(pcgLCurve, "alp", "", cList);
-
-  TLatex lt;
-  lt.SetTextColor(kRed);
-  for (int k=0; k<pcgLCurve->GetN(); k++) {
-    double x = pcgLCurve->GetX()[k];
-    double y = pcgLCurve->GetY()[k];
-    lt.DrawLatex(x, y, Form("%d", k+1)); 
-  }
-
-  //  TGraph* rlLCurve = (TGraph*)extrasRL->At(0);
-    // gL->SetLineColor(kRed);
-    // gL->SetMarkerColor(kRed);
-    // gL->SetMarkerStyle(kFullCircle);
-    // gL->SetMarkerSize(1.5);
-    // gL->SetLineWidth(2);
-
-  //  DrawObject(rlLCurve, "alp", "", cList);
-
-  TGraphTime* anim1 = Animation(histsPCGLS, statObjs, "pl", 200 /*ms*/);
-  DrawObject(anim1, "1", "PCGLS", cList, 700, 500);
-
-  // TGraphTime* anim2 = Animation(histsRL, statObjs, "pl", 0 /*ms*/);
-  // DrawObject(anim2, "2", "Richardson-Lucy", cList, 700, 500);
- 
 
   // Best solutions
   DrawObject(hMeas, "pl", "Shaw test problem;x", cList);
   hMeasI->Draw("plsame");
   hTrue->Draw("plsame");
-  hSVD->SetLineWidth(2);
   hSVD->Draw("lsame");
-  //  ((TH1D*)histsRL->At(499))->Draw("psame");
-  ((TH1D*)histsPCGLS->At(4))->Draw("psame");
+  rg.hGcv->Draw("psame");
+  cg.hLbest = cg.XRegHist->ProjectionX(Form("cg%d",4),4,4);
+  cg.hLbest->Draw("psame");
+  SetHistProps(rg.hGcv, kGreen+2, kNone, kGreen+2, kFullCircle, 1.0);
+  SetHistProps(cg.hLbest, kRed, kNone, kRed, kOpenCircle, 1.0);
+
+  return;
 }
 
 void LoadLibs()
