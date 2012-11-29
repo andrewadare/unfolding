@@ -13,6 +13,7 @@ TH1D* hMeas=0;
 TH1D* hRL=0;
 TH1D* hCh2=0;
 
+TLatex lt;
 TObjArray* cList = new TObjArray(); // Canvas container
 
 void ConvolutionExample()
@@ -44,6 +45,56 @@ void ConvolutionExample()
   TH1D* hEff = hResp->ProjectionY("hEff");
   UnfoldingUtils uu(hResp, hMeas, hMeasCov, 0, 0, hEff);
 
+  Printf("||e||_2 = %g, mean = %g, RMS = %g",
+	 uu.GetbErrNorm(), uu.GetbErrMean(), uu.GetbErrRMS());
+
+
+  // SVD analysis ----------------------------------------------------
+  // -----------------------------------------------------------------
+  SVDResult svd = uu.SVDAnalysis();
+  // Draw s.v. coefficients |u_i'*b|
+  cList->Add(uu.DrawSVDPlot(svd, 0.2, 1e9));
+  gPad->SetName("conv_svd_ana");
+
+  // GSVD analysis ---------------------------------------------------
+  // -----------------------------------------------------------------
+  TMatrixD L = uu.LMatrix(n, UnfoldingUtils::k2DerivNoBC);
+  GSVDResult gsvd = uu.GSVDAnalysis(L,0.38,0,0,"");
+  DrawObject(gsvd.UHist, "surf");
+  cList->Add(uu.DrawGSVDPlot(gsvd, 1e-5, 1e6));
+  gPad->SetName("conv_gsvd_ana");
+
+  // General-form Tikhonov algorithm using GSVD ----------------------
+  // -----------------------------------------------------------------
+  int nLambda = 100;
+  TVectorD regVector(nLambda);
+  for (int k=0; k<nLambda; k++) 
+    regVector(k) = 0.01*(k+1);
+
+  UnfoldingResult rg = uu.UnfoldTikhonovGSVD(gsvd, regVector);
+  DrawObject(rg.XRegHist,"surf","GSVD solutions", cList); 
+  gPad->SetName("conv_gsvd_x");
+
+  DrawObject(rg.GcvCurve, "alp", "", cList);
+  SetGraphProps(rg.GcvCurve,kMagenta+2,kMagenta+2,kFullCircle,0.5);
+  lt.DrawLatex(0.2, 0.8, Form("#lambda_{min} = %g at k = %d", 
+			      rg.lambdaGcv, rg.kGcv));
+  TGraph* ggcv = new TGraph(1);
+  ggcv->SetPoint(0,rg.lambdaGcv,rg.GcvCurve->GetY()[rg.kGcv]);
+  SetGraphProps(ggcv,kRed,kRed,kOpenCircle,2);
+  ggcv->SetLineWidth(2);
+  ggcv->Draw("psame");
+  gPad->SetName("conv_gsvd_gcv");
+
+  DrawObject(rg.LCurve, "alp", "", cList);
+  SetGraphProps(rg.LCurve,kBlue,kBlue,kFullCircle,0.5);
+  TGraph* ggl = new TGraph(1);
+  ggl->SetPoint(0,rg.LCurve->GetX()[rg.kGcv],rg.LCurve->GetY()[rg.kGcv]);
+  SetGraphProps(ggl,kRed,kRed,kOpenCircle,2);
+  ggl->SetLineWidth(2);
+  ggl->Draw("psame");
+  gPad->SetName("conv_gsvd_lcurve");
+
   // Richardson-Lucy algorithm ---------------------------------------
   // -----------------------------------------------------------------
   int nIterRL = 200;
@@ -64,9 +115,9 @@ void ConvolutionExample()
 
   // SVD algorithm ---------------------------------------------------
   // -----------------------------------------------------------------
-  double lambda = 0.01;
-  TObjArray* svdHists = new TObjArray();
-  hSVD = uu.UnfoldSVD(lambda, svdHists, "BCR~");
+  // double lambda = 0.01;
+  // TObjArray* svdHists = new TObjArray();
+  // hSVD = uu.UnfoldSVD(lambda, svdHists, "BCR~");
 
   // -----------------------------------------------------------------
   // Draw
@@ -75,36 +126,48 @@ void ConvolutionExample()
   SetHistProps(hTrue, kBlack, kNone, kBlack, kFullCircle, 0.8);
   SetHistProps(hTrueData, kBlack, kNone, kBlack, kFullCircle, 0.8);
   hTrue->SetLineWidth(2);
-  SetHistProps(hSVD, kGreen+2, kNone, kGreen+2, kOpenCircle, 1.0);
+  //  SetHistProps(hSVD, kGreen+2, kNone, kGreen+2, kOpenCircle, 1.0);
+  SetHistProps(rg.hGcv, kGreen+2, kNone, kGreen+2, kFullSquare, 1.2);
   // SetHistProps(hCG, kRed, kNone, kRed, kOpenCircle, 1.5);
   SetHistProps(hCh2, kMagenta+2, kNone, kMagenta+2, kFullCircle, 1.0);
-
   SetHistProps(hRL, kRed+2, kNone, kRed+2, kOpenCircle, 1.2);
 
-  // Do SVD analysis
-  SVDResult svd = uu.SVDAnalysis();
-
   // Draw response matrix
-  DrawObject(hResp, "col", "", cList, 500, 500);
+  DrawObject(hResp, "col", "", cList, 500, 500);  
+  gPad->SetName("conv_response");
 
   DrawObject(hEff, "", "Efficiency;t;#epsilon_{j}", cList, 700, 500);
-  DrawObject(hSVD);
+  gPad->SetName("conv_resp_eff");
+
+  //  DrawObject(hSVD);
+
+  // Draw the problem without solutions
+  DrawObject(hTrue, "l", "", cList, 500, 500);
+  hMeas->Draw("epsame");
+  TLegend* l0 = new TLegend(0.5, 0.6, 0.99, 0.99, 
+  "#splitline{Exponential truth,}{Gaussian convolution}");
+  l0->SetFillColor(kNone);
+  l0->AddEntry(hTrue, "Data input model", "l");
+  l0->AddEntry(hMeas, "Measurement", "epl");
+  l0->Draw();
+  gPad->SetName("conv_problem_setup");
 
   // Draw true & meas
   DrawObject(hTrue, "l", "", cList, 700, 500);
-  //  hTrueData->Draw("epsame");
+  hTrue->GetYaxis()->SetRangeUser(0., 1.2*hTrue->GetMaximum());
   hMeas->Draw("epsame");
-  //  hSVD->Draw("epsame");
-  hRL->Draw("epsame");
-  hCh2->Draw("epsame");
+  rg.hGcv->Draw("psame");
+  // hRL->Draw("epsame");
+  // hCh2->Draw("epsame");
   TLegend* l1 = new TLegend(0.5, 0.6, 0.99, 0.99);
   l1->SetFillColor(kNone);
   l1->AddEntry(hTrue, "Data input model", "l");
   l1->AddEntry(hMeas, "Measurement", "epl");
-  l1->AddEntry(hRL, Form("Richardson-Lucy alg."), "epl");
-  l1->AddEntry(hCh2, Form("#chi^{2} minimization method", nIterRL), "epl");
+  l1->AddEntry(rg.hGcv, "Tikhonov GSVD", "epl");
+  // l1->AddEntry(hRL, Form("Richardson-Lucy alg."), "epl");
+  // l1->AddEntry(hCh2, Form("#chi^{2} minimization method", nIterRL), "epl");
   l1->Draw();
-
+  gPad->SetName("conv_problem");
 
   // Draw a few of the left singular vectors
   TH1D* hu[999];
@@ -127,14 +190,12 @@ void ConvolutionExample()
   hu[1]->Draw("plsame");
   SetHistProps(hu[0], kAzure-2, kNone, kAzure-2, kFullCircle, 0.8);
   hu[0]->Draw("plsame");
-
+  gPad->SetName("conv_u");
 
   // Draw the s.v. spectrum
   DrawObject(svd.sigma, "p", "", cList, 500, 500);
   gPad->SetLogy();
-
-  // Draw s.v. coefficients |u_i'*b|
-  cList->Add(uu.DrawSVDPlot(svd, 0.2, 1e9));
+  gPad->SetName("conv_sigma");
 
   if (1)
     PrintPDFs(cList, "./outputs");
