@@ -98,6 +98,7 @@ UnfoldingUtils::ComputeRescaledSystem()
   fMatB.ResizeTo(fM,fM);
   fMatBinv.ResizeTo(fM,fM);
   fVecb.ResizeTo(fM);
+  fVecbErr.ResizeTo(fM);
   fVecbTilde.ResizeTo(fM);
   fVecXini.ResizeTo(fN);
   fVecXtrue.ResizeTo(fN);
@@ -122,16 +123,15 @@ UnfoldingUtils::ComputeRescaledSystem()
   fMatAhat = Hist2Matrix(fHistAProb);
 
   // Data uncertainty
-  TVectorD eb(fM);  
   for (int i=0; i<fM; i++)
-    eb(i) = fHistMeas->GetBinError(i+1);
+    fVecbErr(i) = fHistMeas->GetBinError(i+1);
   
   // Data covariance matrix
   if (fHistMeasCov)
     fMatB = Hist2Matrix(fHistMeasCov);
   else
     for (int i=0; i<fM; i++) {
-      fMatB(i,i) = eb(i)*eb(i);
+      fMatB(i,i) = fVecbErr(i)*fVecbErr(i);
     }
   fMatBinv = MoorePenroseInverse(fMatB);
 
@@ -155,12 +155,13 @@ UnfoldingUtils::ComputeRescaledSystem()
   
   // For now, assume uncorrelated errors in b
 
-  fMatATilde = DivColsByVector(fMatA, eb);
+  fMatATilde = DivColsByVector(fMatA, fVecbErr);
   fHistATilde = Matrix2Hist(fMatATilde, "fHistATilde",
 			    fMeasX1,fMeasX2,fTrueX1,fTrueX2);
-  fVecbTilde = ElemDiv(fVecb, eb);
+  fVecbTilde = ElemDiv(fVecb, fVecbErr);
   fHistbTilde = Vec2Hist(fVecbTilde, fMeasX1, fMeasX2, 
 			 "fHistbTilde", "Scaled measured distribution");
+
   for (int i=0;i<fM;i++)
     fHistbTilde->SetBinError(i+1, 1.0);
   return;
@@ -230,6 +231,26 @@ UnfoldingUtils::Getb(TString opt)
   else
     return fVecb;
 }
+
+Double_t 
+UnfoldingUtils::GetbErrNorm()
+{
+  return TMath::Sqrt(fVecbErr*fVecbErr);
+}
+
+Double_t 
+UnfoldingUtils::GetbErrMean()
+{
+  return fVecbErr.Sum()/fVecbErr.GetNrows();
+}
+
+Double_t 
+UnfoldingUtils::GetbErrRMS()
+{
+  TVectorD e2 = ElemMult(fVecbErr,fVecbErr);
+  return TMath::Sqrt(e2.Sum()/e2.GetNrows());
+}
+
 
 SVDResult 
 UnfoldingUtils::SVDAnalysis(TH2* hA, TH1* hb, TString opt)
@@ -785,6 +806,11 @@ UnfoldingUtils::UnfoldChiSqMin(TVectorD& regWts,
 
   result.XRegHist = new TH2D(Form("hChsq%d",id), Form("hChsq%d",id),
 			     nBinsT, xt1, xt2, nRegWts, 0, nRegWts);
+  result.XRegHist->GetXaxis()->CenterTitle();
+  result.XRegHist->GetYaxis()->CenterTitle();
+  result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
+  result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
+
   result.LCurve = new TGraph();
   result.LCurve->SetTitle("TMinuit L-Curve;#chi^{2}_{reg};total curvature");
 
@@ -862,6 +888,11 @@ UnfoldingUtils::UnfoldChiSqMin(TVectorD& regWts,
     result.LCurve->SetPoint(k, RegChi2(tmx), Curvature(w));    
   } // k loop
   
+  result.XRegHist->GetXaxis()->CenterTitle();
+  result.XRegHist->GetYaxis()->CenterTitle();
+  result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
+  result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
+
   return result;
 }
 
@@ -940,11 +971,16 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult& gsvd,
 
   int kg = result.kGcv+1;
   result.LCurve->SetTitle("GSVD L-Curve;||Ax_{#lambda}-b||_{2};||Lx_{#lambda}||_{2}");
-  result.GcvCurve->SetTitle("GSVD cross-validation curve;"
-			    "#lambda;G(#lambda)");
+  result.GcvCurve->SetNameTitle("gsvd_gcv","GSVD cross-validation curve;"
+				"#lambda;G(#lambda)");
 
   result.XRegHist = Matrix2Hist(result.XReg, Form("xregHist_%d",id),
 				fTrueX1, fTrueX2,lambda(0),lambda(nk-1));
+  result.XRegHist->GetXaxis()->CenterTitle();
+  result.XRegHist->GetYaxis()->CenterTitle();
+  result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
+  result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
+
   result.XRegHist->SetTitle("GSVD solutions;x;#lambda");
   result.hGcv = 
     result.XRegHist->ProjectionX(Form("gsvd_%d_bin%d",id,kg),kg,kg);
@@ -1186,7 +1222,11 @@ UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations,
   
   result.XRegHist = Matrix2Hist(result.XReg, Form("X_RL_%d",id),
 				fTrueX1,fTrueX2,0,nIterations);
-  
+  result.XRegHist->GetXaxis()->CenterTitle();
+  result.XRegHist->GetYaxis()->CenterTitle();
+  result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
+  result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
+
   /*
   result.wregHist = Vec2Hist(wreg, fTrueX1,fTrueX2,
   			     Form("gsvd_wreg_%d",id), 
@@ -1202,6 +1242,7 @@ UnfoldingResult
 UnfoldingUtils::UnfoldPCGLS(const int nIterations, 
 			    int LType,
 			    TString opt,
+			    const TH1* gamma2,
 			    const TH2* hA,
 			    const TH1* hb,
 			    const TH1* hXini)
@@ -1241,6 +1282,10 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
     x2 = hXini->GetXaxis()->GetXmax();
     xini = Hist2Vec(hXini);
   }
+
+ // Columns are filter factors at iteration k
+  result.F.ResizeTo(fN,nIterations);
+  TVectorD Fd(fN);
 
   result.WReg.ResizeTo(fN,nIterations);
   result.XReg.ResizeTo(fN,nIterations);
@@ -1308,15 +1353,55 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
     dq = dq2;
     z = q + beta*z;
 
-    result.LCurve->SetPoint(k-1, TMath::Sqrt(r*r), TMath::Sqrt((L*x)*(L*x)));
+    // Results
     for (int j=0; j<fN; j++)
       result.WReg(j,k-1) = x(j);
     for (int j=0; j<fN; j++)
       result.XReg(j,k-1) = x(j)*xini(j);
+
+    // Parameter optimization analysis -------------------------------
+
+    // L-Curve
+    result.LCurve->SetPoint(k-1, TMath::Sqrt(r*r), TMath::Sqrt((L*x)*(L*x)));
+
+    // Filter factors (if GSVD gamma values available)
+    if (gamma2) {
+      if (k==1) {
+	for (int i=0; i<fN; i++) {
+	  double g2 = gamma2->GetBinContent(i+1);
+	  result.F(i,0) = alpha*g2;
+	  Fd(i) = g2*(1. - alpha*g2 + beta);
+	}
+      }
+      else {
+	for (int i=0; i<fN; i++) {
+	  double g2 = gamma2->GetBinContent(i+1);
+	  result.F(i,k-1) = result.F(i,k-2) + alpha*Fd(i);
+	  Fd(i)  = g2 - g2*result.F(i,k-1) + beta*Fd(i);
+	}
+      }
+      if (k > 2) { // This needs work.
+	for (int i=0; i<fN; i++) {
+	  if (TMath::Abs(result.F(i,k-2)-1) < 1e-4)
+	    result.F(i,k-2) = 1.0;
+	  if (TMath::Abs(result.F(i,k-3)-1) < 1e-4)
+	    result.F(i,k-3) = 1.0;
+
+	  if (TMath::Abs(result.F(i,k-1)-1) < 1e-4)
+	    result.F(i,k-1) = 1.0;
+	}
+      }
+    }
+    
   } // end iteration loop
   cout << endl;
   result.XRegHist = Matrix2Hist(result.XReg, Form("X_CG_%d",id),
 				fTrueX1, fTrueX2,0,nIterations);
+  result.XRegHist->GetXaxis()->CenterTitle();
+  result.XRegHist->GetYaxis()->CenterTitle();
+  result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
+  result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
+
   result.XRegHist->SetTitle("CGLS solutions;x;iteration");
   return result;
 }
@@ -2692,10 +2777,9 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   for (int i=0; i<q2; i++) 
     S(i,l-p+i) = beta(l-p+i);
 
+  if (debug) {
     cout << "alpha: ";  alpha.Print();
     cout << "beta: ";   beta.Print();
-  
-  if (debug) {
     cout << "C: ";  C.Print();
     cout << "S: ";  S.Print();
     TMatrixD upper(C, TMatrixD::kMultTranspose, Z);

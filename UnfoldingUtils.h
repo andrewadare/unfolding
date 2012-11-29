@@ -110,6 +110,8 @@ struct UnfoldingResult
   TGraph* LCurve;
   TH1D* hLbest; // Best unfolding result (according to L-Curve)
 
+  TMatrixD F; // filter factors vs. iteration number
+
   // Generalized cross-validation curve,
   // and best lambda & iteration / index
   TGraph* GcvCurve;
@@ -215,6 +217,7 @@ class UnfoldingUtils
   UnfoldingResult UnfoldPCGLS(const int nIterations, 
 			      int lMatrixType             = k2DerivBCR,
 			      TString opt                 = "",
+			      const TH1* gamma2           = 0,
 			      const TH2* hA               = 0, 
 			      const TH1* hb               = 0, 
 			      const TH1* hXini            = 0);
@@ -269,6 +272,9 @@ class UnfoldingUtils
   Double_t GetTrueX2()      const {return fTrueX2;}
   Double_t GetMeasX1()      const {return fMeasX1;}
   Double_t GetMeasX2()      const {return fMeasX2;}
+  Double_t GetbErrNorm();
+  Double_t GetbErrMean();
+  Double_t GetbErrRMS();
   Int_t GetM()              const {return fM;}         // Number of measured bins
   Int_t GetNMeasBins()      const {return fM;}         // Number of measured bins
   Int_t GetN()              const {return fN;}         // Number of true/generated bins
@@ -330,6 +336,7 @@ class UnfoldingUtils
   TMatrixD fMatB;
   TMatrixD fMatBinv;
   TVectorD fVecb;
+  TVectorD fVecbErr;
   TVectorD fVecbTilde;
   TVectorD fVecXtrue;
   TVectorD fVecXini;
