@@ -103,6 +103,7 @@ UnfoldingUtils::ComputeRescaledSystem()
   fVecXini.ResizeTo(fN);
   fVecXtrue.ResizeTo(fN);
 
+  Info("UnfoldingUtils::ComputeRescaledSystem()","Initializing...");
   fMatA = Hist2Matrix(fHistA);
   fVecb = Hist2Vec(fHistMeas);
 
@@ -131,9 +132,13 @@ UnfoldingUtils::ComputeRescaledSystem()
     fMatB = Hist2Matrix(fHistMeasCov);
   else
     for (int i=0; i<fM; i++) {
-      fMatB(i,i) = fVecbErr(i)*fVecbErr(i);
+      double var = fVecbErr(i)*fVecbErr(i);
+      fMatB(i,i) = var;
+      fMatBinv(i,i) = (var > 0) ? 1./var : 0;
     }
-  fMatBinv = MoorePenroseInverse(fMatB);
+
+  // Info("UnfoldingUtils::ComputeRescaledSystem()","Inverting covariance matrix...");
+  // fMatBinv = MoorePenroseInverse(fMatB);
 
   // Create rescaled (~) quantities
   if (0) {
@@ -1169,7 +1174,11 @@ UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations,
 
   result.XReg.ResizeTo(fN, nIterations);
   // Prior vector x0 must be positive
-  TVectorD x0 = (hXStart)? Hist2Vec(hXStart) : ones;
+  TVectorD x0(fN);
+  for (int j=0; j<fN; j++) 
+    x0(j) = 1.;
+  if (hXStart) 
+    x0 = Hist2Vec(hXStart);
   for (int j=0; j<x0.GetNrows(); j++) {
     if (x0(j)<=0) {
       Warning("UnfoldingUtils::UnfoldRichardsonLucy()",
@@ -1200,16 +1209,19 @@ UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations,
   for (int k=0; k<nIterations; k++) {
     printf("Richardson-Lucy iteration %d\r", k+1);
   
-      TVectorD Ax = A*x + bvar; 
+      TVectorD Ax = A*x + bvar;
+      Printf("\n0");
       TVectorD r = ElemDiv(b, Ax);
       TVectorD ATr = AT*r;
-      TVectorD AT1 = AT*ones; // efficiency correction factor
+      TVectorD AT1 = AT*ones; // efficiency correction factors
+      Printf("AT1: %d", AT1.GetNrows());
       TVectorD xoverAT1 = ElemDiv(x, AT1);
+        Printf("\n2");
       x = ElemMult(xoverAT1, ATr);
       TVectorD resid = A*x-b;
       double rnorm = TMath::Sqrt(resid*resid);
       double xnorm = TMath::Sqrt(x*x);
-  
+
       if (opt.Contains("~"))
 	x = ElemMult(x,xini);
       
@@ -1834,11 +1846,14 @@ UnfoldingUtils::BandedDiagonalMatrix(TH1* hDpt,
   int nNegBins = zerobin-1;          // binning along true TH2 axis
   int nPosBins = hDpt->GetNbinsX() - nNegBins;  // "  meas TH2 axis
   if (nNegBins < 1)
-    Error("BkgMatrix()", "nNegBins < 1 (%d)", nNegBins);
+    Error("UnfoldingUtils::BandedDiagonalMatrix()", 
+	  "nNegBins < 1 (%d)", nNegBins);
   if (nMeas > nPosBins)
-    Error("BkgMatrix()", "nMeas (%d) > nPosBins (%d)", nMeas, nPosBins);
+    Error("UnfoldingUtils::BandedDiagonalMatrix()", 
+	  "nMeas (%d) > nPosBins (%d)", nMeas, nPosBins);
   if (nTrue >= zerobin)
-    Error("BkgMatrix()", "nTrue (%d) > nNegBins (%d)", nTrue, nNegBins);
+    Error("UnfoldingUtils::BandedDiagonalMatrix()", 
+	  "nTrue (%d) > nNegBins (%d)", nTrue, nNegBins);
   
   ip=0;
   for (int k=zerobin; k<=zerobin+nMeas; k++) {
