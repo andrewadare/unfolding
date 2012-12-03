@@ -1,6 +1,5 @@
-int m = 25, n = 25;
+int m = 100, n = 25;
 double x1 = 0., x2 = 5.;
-double d = (x2-x1)/m;
 
 // Response matrix, truth model, truth model estimator, and data.
 TH2D* hResp=0;
@@ -13,7 +12,7 @@ TH1D* hMeas=0;
 TH1D* hRL=0;
 TH1D* hCh2=0;
 
-TLatex lt;
+
 TObjArray* cList = new TObjArray(); // Canvas container
 
 void ConvolutionExample()
@@ -24,16 +23,19 @@ void ConvolutionExample()
     gSystem->SetBuildDir(gSystem->Getenv("TMPDIR"));
   gROOT->LoadMacro("UtilFns.C");
   gROOT->LoadMacro("UnfoldingUtils.C+g");
-
-  // Create response matrix
+  TLatex lt;
+  lt.SetNDC();
+  
+  // Create test problem from truth and convolver TF1s
   UnfoldingUtils utils;
 
   TF1* fTrue = new TF1("fTrue", "TMath::Exp(-x)", x1,x2);
-  TF1* fGaus = new TF1("fGaus", "TMath::Gaus(x)", -10, 10);
+  TF1* fGaus = new TF1("fGaus", "[0]*TMath::Gaus(x,0,1,1)", -x2, x2);
+  fGaus->SetParameter(0,(x2-x1)/m);
 
   TestProblem t = 
     utils.MonteCarloConvolution(m, n, x1, x2, x1, x2, fTrue, fGaus, 10000);
-  
+
   hResp = t.Response;
   hTrue = t.xTruth;
   hTrueData = t.xTruthEst;
@@ -48,10 +50,10 @@ void ConvolutionExample()
   Printf("||e||_2 = %g, mean = %g, RMS = %g",
 	 uu.GetbErrNorm(), uu.GetbErrMean(), uu.GetbErrRMS());
 
-
   // SVD analysis ----------------------------------------------------
   // -----------------------------------------------------------------
   SVDResult svd = uu.SVDAnalysis();
+
   // Draw s.v. coefficients |u_i'*b|
   cList->Add(uu.DrawSVDPlot(svd, 0.2, 1e9));
   gPad->SetName("conv_svd_ana");
@@ -59,7 +61,7 @@ void ConvolutionExample()
   // GSVD analysis ---------------------------------------------------
   // -----------------------------------------------------------------
   TMatrixD L = uu.LMatrix(n, UnfoldingUtils::k2DerivNoBC);
-  GSVDResult gsvd = uu.GSVDAnalysis(L,0.38,0,0,"");
+  GSVDResult gsvd = uu.GSVDAnalysis(L,0.5,0,0,"");
   DrawObject(gsvd.UHist, "surf");
   cList->Add(uu.DrawGSVDPlot(gsvd, 1e-5, 1e6));
   gPad->SetName("conv_gsvd_ana");
@@ -72,6 +74,8 @@ void ConvolutionExample()
     regVector(k) = 0.01*(k+1);
 
   UnfoldingResult rg = uu.UnfoldTikhonovGSVD(gsvd, regVector);
+  Info("", "Finished GSVD analysis.");
+
   DrawObject(rg.XRegHist,"surf","GSVD solutions", cList); 
   gPad->SetName("conv_gsvd_x");
 
@@ -100,16 +104,19 @@ void ConvolutionExample()
   int nIterRL = 200;
   UnfoldingResult rl = uu.UnfoldRichardsonLucy(nIterRL);
   hRL = rl.XRegHist->ProjectionX(Form("rl%d",nIterRL),nIterRL,nIterRL);
-  
+  hRL->Scale(1./hRL->GetBinWidth(1));
+
   // Chi squared minimization ----------------------------------------
   // -----------------------------------------------------------------
-  TVectorD regWts(100);
-  for (int k=0; k<100; k++)
-    regWts(k) = (k+1)*2e-5;
+  int nl = 50;
+  TVectorD regWts(nl);
+  for (int k=0; k<nl; k++)
+    regWts(k) = (k+1)*1e-5;
   uu.SetRegType(UnfoldingUtils::kTotCurv);
   UnfoldingResult cs = uu.UnfoldChiSqMin(regWts);
   DrawObject(cs.XRegHist,"surf");  
-  hCh2 = cs.XRegHist->ProjectionX(Form("cs%d",50),50,50); // arb. guess for now
+  hCh2 = cs.XRegHist->ProjectionX(Form("cs%d",30),30,30);
+  hCh2->Scale(1./hCh2->GetBinWidth(1));
   DrawObject(cs.LCurve,"alp");
   SetGraphProps(cs.LCurve,kBlue,kBlue,kFullCircle,0.5);
 
@@ -122,6 +129,12 @@ void ConvolutionExample()
   // -----------------------------------------------------------------
   // Draw
   // -----------------------------------------------------------------
+
+  // Rescale for drawing (do not rescale before unfolding!)
+  hTrue->Scale(1./hTrue->GetBinWidth(1));
+  hTrueData->Scale(1./hTrue->GetBinWidth(1));
+  hMeas->Scale(1./hMeas->GetBinWidth(1));
+
   SetHistProps(hMeas, kBlue, kNone, kBlue, kOpenSquare, 0.8);
   SetHistProps(hTrue, kBlack, kNone, kBlack, kFullCircle, 0.8);
   SetHistProps(hTrueData, kBlack, kNone, kBlack, kFullCircle, 0.8);
@@ -143,6 +156,7 @@ void ConvolutionExample()
 
   // Draw the problem without solutions
   DrawObject(hTrue, "l", "", cList, 500, 500);
+  hTrueData->Draw("epsame");
   hMeas->Draw("epsame");
   TLegend* l0 = new TLegend(0.5, 0.6, 0.99, 0.99, 
   "#splitline{Exponential truth,}{Gaussian convolution}");
@@ -156,16 +170,17 @@ void ConvolutionExample()
   DrawObject(hTrue, "l", "", cList, 700, 500);
   hTrue->GetYaxis()->SetRangeUser(0., 1.2*hTrue->GetMaximum());
   hMeas->Draw("epsame");
+  rg.hGcv->Scale(1./rg.hGcv->GetBinWidth(1));
   rg.hGcv->Draw("psame");
-  // hRL->Draw("epsame");
-  // hCh2->Draw("epsame");
+  hRL->Draw("epsame");
+  hCh2->Draw("epsame");
   TLegend* l1 = new TLegend(0.5, 0.6, 0.99, 0.99);
   l1->SetFillColor(kNone);
   l1->AddEntry(hTrue, "Data input model", "l");
   l1->AddEntry(hMeas, "Measurement", "epl");
   l1->AddEntry(rg.hGcv, "Tikhonov GSVD", "epl");
-  // l1->AddEntry(hRL, Form("Richardson-Lucy alg."), "epl");
-  // l1->AddEntry(hCh2, Form("#chi^{2} minimization method", nIterRL), "epl");
+  l1->AddEntry(hRL, Form("Richardson-Lucy alg."), "epl");
+  l1->AddEntry(hCh2, Form("#chi^{2} minimization method", nIterRL), "epl");
   l1->Draw();
   gPad->SetName("conv_problem");
 

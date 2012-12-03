@@ -52,6 +52,7 @@ struct TestProblem       // Output from test problem generator.
   TH1D* xTruthEst;       // Estimator for xTruth.
   TH1D* bIdeal;          // Observed b, no noise.
   TH1D* bNoisy;          // Observed b, perturbed by noise.
+  TH1D* eff;             // Efficiency: meas/true vs. true x
 };
 
 struct SVDResult         // Output from SVDAnalysis().

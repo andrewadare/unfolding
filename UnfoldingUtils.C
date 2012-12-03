@@ -169,6 +169,8 @@ UnfoldingUtils::ComputeRescaledSystem()
 
   for (int i=0;i<fM;i++)
     fHistbTilde->SetBinError(i+1, 1.0);
+
+  Info("UnfoldingUtils::ComputeRescaledSystem()","Finished init step.");
   return;
 }
 
@@ -327,10 +329,10 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
 {
   // Decompose A, L jointly as A = U*C*X', L = V*S*X'. 
   // If A is m x n, and L is p x n, and A has full rank,
-  // U  is m x m 
+  // U  is m x n
   // V  is p x p
   // X' is n x n
-  // C  is m x n
+  // C  is n x n
   // S  is p x n
   // alpha and beta are the "interesting" diagonal elements of C,S
   // respectively, and have length p.
@@ -361,6 +363,8 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   TMatrixD UT(TMatrixD::kTransposed, g.U);
   TMatrixD X(TMatrixD::kInverted, g.XT);
   TVectorD utb(UT*b);
+
+  // GSVD expansion coeffs
   TVectorD c = ElemDiv(utb,g.alpha);
 
   // Tikhonov filter factors
@@ -539,42 +543,50 @@ UnfoldingUtils::MonteCarloConvolution(const int m,
 				      TF1* truthFn, 
 				      TF1* kernelFn, 
 				      const int nEvents)
-{
-  
+{  
+  static int id = 0; id++;
   TestProblem t;
   double dm = (xm2-xm1)/m;
   double dt = (xt2-xt1)/n;
-  
-  // Create response matrix from kernelFn, discretized via simple colocation. 
-  TH1D* hKernel = new TH1D("hKernel", "Discretized convolution kernel", 
-			   m+n+1, -xt2-dt/4, xm2+dm/4);
-  for (int j=1; j<=2*m+1; j++) {
-    double ctr = hKernel->GetBinCenter(j);
-    double val = kernelFn->Eval(ctr);
-    hKernel->SetBinContent(j, val);
-  }
-  t.Response = BandedDiagonalMatrix(hKernel, m, n, xt1, xt2, xm1, xm2);
+  TMatrixD R(m,n);
+
+  // Discretize the kernel to fill R
+  for (int i=0; i<m; i++)
+    for (int j=0; j<n; j++)
+      R(i,j) = kernelFn->Eval(xt1+j*dt-i*dm);
+  t.Response = Matrix2Hist(R, Form("R%d",id), xm1, xm2, xt1, xt2);
   t.Response->SetTitle(Form("%d x %d convolution matrix;"
 			    "s (observed);t (true)", m, n));
-  
+
+  TH2D* RMC = new TH2D(Form("R_MC%d",id), "A_{MC}", 
+			m,xm1,xm2,n,xt1,xt2);
+
   // Model a true and a measured distribution
   // There is no bIdeal for this problem.
-  t.xTruth    = new TH1D("hTrue",     "",     n, xt1, xt2);  
+  t.xTruth    = new TH1D("hTrue",    "",         n, xt1, xt2);  
   t.xTruthEst = new TH1D("hTrueEst", "hTrueEst", n, xt1, xt2);  
-  t.bNoisy    = new TH1D("hMeas",     "hMeas",     m, xm1, xm2);  
+  t.bNoisy    = new TH1D("hMeas",    "hMeas",    m, xm1, xm2);  
+  t.xTruthEst->Sumw2();
+  t.bNoisy->Sumw2();
   for (Int_t i=0; i<nEvents; i++) {
     Double_t xt = truthFn->GetRandom();
     t.xTruthEst->Fill(xt);
-    Double_t xsmear = kernelFn->GetRandom();
-    t.bNoisy->Fill(xt + xsmear);
+    Double_t xm = xt + kernelFn->GetRandom();
+    t.bNoisy->Fill(xm);
+    RMC->Fill(xm,xt);
   }
 
+  // MC efficiency histogram
+  t.eff = RMC->ProjectionY("eff",1,m);
+  t.eff->Divide(t.xTruthEst);
+
+  // Exact truth histogram
   for (int j=1; j<=n; j++) {
     double val = truthFn->Eval(t.xTruth->GetBinCenter(j));
     t.xTruth->SetBinContent(j, val);
   }
   t.xTruth->Scale(nEvents/t.xTruth->Integral());
-  
+
   return t;
 }
 
@@ -958,10 +970,11 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult& gsvd,
     for (int j=0; j<n; j++)
       f1(j) = 1-f(j);
     vec = ElemMult(f1, gsvd.UTb);
-    TMatrixD Up = gsvd.U.GetSub(0,m-1,m-p,m-1); // m x p
+
+    TMatrixD Up = gsvd.U.GetSub(0,m-1,n-p,n-1); // m x n --> m x p
     TVectorD r = Up * vec.GetSub(n-p, n-1) - gsvd.bInc;
     double rnorm = TMath::Sqrt(r*r);
-
+    
     double gcv = rnorm / (m - f.Sum());
 
     result.LCurve->SetPoint(k, rnorm, lxnorm);
@@ -1210,13 +1223,10 @@ UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations,
     printf("Richardson-Lucy iteration %d\r", k+1);
   
       TVectorD Ax = A*x + bvar;
-      Printf("\n0");
       TVectorD r = ElemDiv(b, Ax);
       TVectorD ATr = AT*r;
       TVectorD AT1 = AT*ones; // efficiency correction factors
-      Printf("AT1: %d", AT1.GetNrows());
       TVectorD xoverAT1 = ElemDiv(x, AT1);
-        Printf("\n2");
       x = ElemMult(xoverAT1, ATr);
       TVectorD resid = A*x-b;
       double rnorm = TMath::Sqrt(resid*resid);
@@ -2842,14 +2852,21 @@ UnfoldingUtils::GSVD(TMatrixD& A, TMatrixD& B)
   TMatrixD M(m+p,n);
 
   // 1. SVD of M = [A;B]: M = Q*S*Z'
-  TMatrixDSub(M, 0, m-1,   0, n-1) += A;
-  TMatrixDSub(M, m, m+p-1, 0, n-1) += B;
-  r = Rank(M);
+  // TMatrixDSub(M, 0, m-1,   0, n-1) += A;
+  // TMatrixDSub(M, m, m+p-1, 0, n-1) += B;
+  M.SetSub(0, 0, A);
+  M.SetSub(m, 0, B);
 
+  if (M.GetNoElements() > 100000) 
+    Printf("UnfoldingUtils::GSVD(): " 
+	   "Computing initial SVD on M (%d x %d)...", m+p, n);
   TDecompSVD svdM(M);
   TMatrixD Q  = svdM.GetU(); // m+p x m+p
   TMatrixD Z  = svdM.GetV(); //   n x n
   TVectorD sv = svdM.GetSig();
+
+  r = sv.GetNrows(); // Assume M has full rank to save time
+  //r = Rank(M);
 
   if (debug)
     Printf("Rank(M): %d. M = QSZ\', Q (%d x %d) Z (%d x %d)", 
@@ -2860,6 +2877,7 @@ UnfoldingUtils::GSVD(TMatrixD& A, TMatrixD& B)
     Sr(i,i) = sv(i);
 
   // 2. Partition Q to match dimensions of A and B.
+  Printf("Q %d x %d", Q.GetNrows(), Q.GetNcols()); 
   TMatrixD Q1 = Q.GetSub(0,m-1,0,n-1);
   TMatrixD Q2 = Q.GetSub(m, m+p-1, 0, n-1);  
   bool q1Taller = Q1.GetNrows() > Q2.GetNrows();
@@ -2869,22 +2887,21 @@ UnfoldingUtils::GSVD(TMatrixD& A, TMatrixD& B)
     (q1Taller)? CSDecompQ1Taller(Q1, Q2) : CSDecomp(Q1, Q2);
   
   // 4. Assign output struct members
-  g.U.ResizeTo(csd.U);
+  g.U.ResizeTo(m,n); //csd.U);
   g.V.ResizeTo(csd.V);
-  g.C.ResizeTo(csd.C);
+  g.C.ResizeTo(n,n); //csd.C);
   g.S.ResizeTo(csd.S);
   g.alpha.ResizeTo(csd.alpha);
   g.beta.ResizeTo(csd.beta);
   g.gamma.ResizeTo(n);
 
-  g.U = csd.U;
+  g.U = csd.U.GetSub(0,m-1,0,n-1);
   g.V = csd.V;
-  g.C = csd.C;
+  g.C = csd.C.GetSub(0,n-1,0,n-1);
   g.S = csd.S;
   g.alpha = csd.alpha;
   g.beta = csd.beta;
   g.gamma = ElemDiv(g.alpha, g.beta, 9999e12);
-
   
   // Create X' from V'Sigma (upper left) and W (lower right)
   TMatrixD XT(n,n);
