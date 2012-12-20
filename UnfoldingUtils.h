@@ -82,6 +82,9 @@ struct GSVDResult        // Output from GSVDAnalysis().
   TMatrixD V;            // Columns = left sing. vectors of L (p x p)
   TMatrixD L;            // Smoothing matrix used (p x n)
   TMatrixD A;            // Coefficient matrix used (m x n)
+  TMatrixD Ap;           // A^#: regularized inverse of A (n x m)
+  TMatrixD covw;         // Covariance matrix of wreg Ap * Ap' (n x n)
+  TMatrixD covx;         // xini * covw * xini
   TVectorD b;            // Measured RHS vector used (m)
   TVectorD bInc;         // Incompatible b component (I-UU')b (m x m)
 
@@ -89,13 +92,13 @@ struct GSVDResult        // Output from GSVDAnalysis().
   TH2D* XHist;           // GSVD basis vectors
 
   // Solution for this lambda
-  TH1D* wregHist;        // xini-scaled result w^lambda
+  TH1D* wregHist;        // scaled result w^lambda
   TH1D* xregHist;        // xini_j * w^lambda_j (solution)
 
   // Abs. values (for visual analysis)
-  TH1D* coeffAbs;        // |uT*b|/alpha
+  TH1D* UTbAbs;          // Vector of |U'_i*b| values
+  TH1D* coeffAbs;        // Vector of |U'_i*b|/alpha_i values
   TH1D* regcAbs;         // Regularized (filtered) coeffs.
-  TH1D* UTbAbs;          // |U'*b|
 };
 
 struct UnfoldingResult
@@ -105,6 +108,12 @@ struct UnfoldingResult
   // Bin k along y is the kth solution.
   TMatrixD WReg;
   TMatrixD XReg;
+
+  // Covariance matrices of w and x (for single best solution)
+  TMatrixD wCov;
+  TMatrixD xCov;
+
+  TH2D* WRegHist;
   TH2D* XRegHist;
   
   // Parametric curve of ||Lx||_2 vs. ||Ax-b||_2.
@@ -119,6 +128,7 @@ struct UnfoldingResult
   double lambdaGcv;
   int kGcv;
   TH1D* hGcv; // Best unfolding result (according to GCV)
+
 };
 
 class UnfoldingUtils 
@@ -137,7 +147,7 @@ class UnfoldingUtils
   bool BinningOk();
   
   // Conversion methods
-  TVectorD Hist2Vec(const TH1* h);
+  TVectorD Hist2Vec(const TH1* h, TString opt=""); // use "unc" to get error
   TMatrixD Hist2Matrix(const TH2* h);
   TH1D* Vec2Hist(const TVectorD& v, Double_t x1, Double_t x2, 
 		 TString name, TString title="");  
@@ -168,17 +178,18 @@ class UnfoldingUtils
   void SwapColumns(TMatrixD &A, int col1, int col2);
   void SwapElements(TVectorD& v, int j1, int j2);
 
-  void NormalizeXSum(TH2* hA, TH1* hN=0); // Modify hA in-place
+  void NormalizeXSum(TH2* hA, TH1* hN=0); // Modifies hA in-place
   TH2* TH2Product(TH2* hA, TH2* hB, TString name);
   TH2D* TH2Sub(TH2* h, int bx1, int bx2, int by1, int by2, TString name);
-  TMatrixD MoorePenroseInverse(TMatrixD& A, double tol = 1e-15);
-  TMatrixD Null(TMatrixD& A);
-  int Rank(TMatrixD& A);
-  TMatrixD Toeplitz(int m1, int n1, double col[], double row[]);
-  TMatrixD LMatrix(const int n, const int kind, double eps = 1.e-5);
+  TMatrixD MoorePenroseInverse(TMatrixD& A, double tol = 1e-15); // Uses SVD
+  TMatrixD Null(TMatrixD& A); // Columns form a basis for the null space of A
+  int Rank(TMatrixD& A); // Uses SVD
+  TMatrixD Toeplitz(int m1, int n1, double col[], double row[]); // Pass in first col & row
+  TMatrixD LMatrix(const int n, const int kind, double eps = 1.e-5); // Matrix to define smoothing seminorm
   TMatrixD DerivativeMatrix(int n, int d);
-  TVectorD ElemMult(const TVectorD& x, const TVectorD& y);
-  TVectorD ElemDiv (const TVectorD& x, const TVectorD& y, double div0val = 0.);
+  TVectorD Ones(int n); // n-vector of 1's
+  TVectorD ElemMult(const TVectorD& x, const TVectorD& y); // Element-wise vector multiplication
+  TVectorD ElemDiv (const TVectorD& x, const TVectorD& y, double div0val = 0.);  // Element-wise vector division
   TMatrixD MultRowsByVector(const TMatrixD& M, const TVectorD& v);
   TMatrixD DivColsByVector(const TMatrixD& M, const TVectorD& v, bool makeZeroIfNaN=true);
   TMatrixD OuterProduct(TVectorD a, TVectorD b); // a*b'
@@ -222,11 +233,16 @@ class UnfoldingUtils
 			      const TH2* hA               = 0, 
 			      const TH1* hb               = 0, 
 			      const TH1* hXini            = 0);
+  UnfoldingResult UnfoldPCGLS(const int nIterations, 
+			      TMatrixD& L,
+			      TString opt                 = "",
+			      const TH1* gamma2           = 0,
+			      const TH2* hA               = 0, 
+			      const TH1* hb               = 0, 
+			      const TH1* hXini            = 0);
   
   // Richardson-Lucy algorithm
-  UnfoldingResult UnfoldRichardsonLucy(const int nIterations, 
-				       TString opt        = "",
-				       const TH1* hXStart = 0);
+  UnfoldingResult UnfoldRichardsonLucy(const int nIterations);
   
   // Regularized Hocker/Kartvilishveli SVD algorithm
   TH1D* UnfoldSVD(double lambda, 
@@ -237,10 +253,9 @@ class UnfoldingUtils
 		  TH1* hXini                    = 0);
   
   // Regularized chi squared minimization algorithm
-  UnfoldingResult UnfoldChiSqMin(TVectorD& regWts, 
-				 TString opt              = "",
-				 TH1* hXStart             = 0); 
+  UnfoldingResult UnfoldChiSqMin(TVectorD& regWts, TString opt = ""); 
   
+  // General-form Tikhonov solver based on generalized SVD
   UnfoldingResult UnfoldTikhonovGSVD(GSVDResult& gsvd,
 				     TVectorD& lambda, 
 				     TString opt = "");
@@ -256,18 +271,22 @@ class UnfoldingUtils
   GSVDResult GSVDAnalysis(TMatrixD& L, double lambda=0, TH2* hA=0, TH1* hb=0, TString opt="");
   TCanvas* DrawSVDPlot(SVDResult, double ymin, double ymax, TString opt="");
   TCanvas* DrawGSVDPlot(GSVDResult, double ymin, double ymax, TString opt="");
-  //  TCanvas* DrawGSVDPlot(TObjArray* svdhists, double ymin, double ymax, TString opt="");
   
   TH2D* UnfoldCovMatrix(int nTrials, 
 			int algo, 
 			double regPar, 
-			TString opt);
+			TString opt,
+			TObjArray* bHists = 0);
   
-  // Set and get methods  
+  // Set and get methods
   void SetTrueRange(double x1, double x2);
   void SetMeasRange(double x1, double x2);
+  void SetVerbosity(int val)    {fVerbosity = val;}  
   void SetRegType(int val)      {fRegType   = val;}
   void SetRegWeight(double val) {fRegWeight = val;}
+  void SetLMatrix(TMatrixD& L)  {fMatL.ResizeTo(L); fMatL = L;}
+  void SetPrior(TH1D* h);
+  void SetSmoothingWeights(TVectorD& wts) {fSmoothingWeight = wts;}
 
   Double_t GetTrueX1()      const {return fTrueX1;}
   Double_t GetTrueX2()      const {return fTrueX2;}
@@ -284,6 +303,7 @@ class UnfoldingUtils
   TVectorD Getb(TString opt = "");                     // "~" or ""
   TMatrixD GetbCovariance() const {return fMatB;}      // Error matrix of b
   TMatrixD GetbBinv()       const {return fMatBinv;}   // Inverse error matrix of b
+  TMatrixD GetLMatrix()     const {return fMatL;}
   TVectorD GetxTrue()       const {return fVecXtrue;}  // b, scaled by its error
   TH2D* GetAProbHist() 	    const {return fHistAProb;}
   TH2D* GetAHist()          const {return fHistA;}
@@ -291,8 +311,9 @@ class UnfoldingUtils
   TH2D* GetBCovHist() 	    const {return fHistMeasCov;}
   TH1D* GetbTildeHist()     const {return fHistbTilde;}
   TH1D* GetXiniHist()       const {return fHistXini;}
-  TH1D* GetXTrueHist()      const {return fHistXtrue;}
+  TH1D* GetXTrueHist();
   TH1D* GetEffHist()        const {return fHistEff;}
+  TH1D* GetPrior()          const {return fHistPrior;}
 
   // Smoothing matrix types (& descriptions of W = Null(L))
   enum LType{kUnitMatrix, // n   x n, W=0 
@@ -307,15 +328,18 @@ class UnfoldingUtils
   enum RegType{kNoReg,    // add zero to chi squared
 	       k2Norm,    // L_2 norm ||x||_2 = sqrt(x*x).
 	       kTotCurv}; // From 2nd derivative
- 
+  
   enum UnfoldingAlgo{kSVDAlgo,
+		     kGSVDAlgo,
 		     kRichLucyAlgo,
 		     kChi2MinAlgo,
 		     kPCGLSAlgo};
+  TString Algorithm(const int alg); // Pass in UnfoldingAlgo type
 
  protected:
   void ComputeRescaledSystem();
 
+  int fVerbosity;
   bool fTilde;
   Int_t fM, fN;
   Double_t fMeasX1, fMeasX2, fTrueX1, fTrueX2;
@@ -330,19 +354,21 @@ class UnfoldingUtils
   TH1D* fHistXini;
   TH1D* fHistXtrue;
   TH1D* fHistEff;
+  TH1D* fHistPrior;     // Implemented for R-L and chi^2
   
-  TMatrixD fMatA;
-  TMatrixD fMatAhat;
-  TMatrixD fMatATilde;
-  TMatrixD fMatB;
-  TMatrixD fMatBinv;
-  TVectorD fVecb;
-  TVectorD fVecbErr;
-  TVectorD fVecbTilde;
-  TVectorD fVecXtrue;
-  TVectorD fVecXini;
+  TMatrixD fMatA;       // Transfer matrix
+  TMatrixD fMatAhat;    // Probability matrix (column sums = 1.0)
+  TMatrixD fMatATilde;  // Covariance-preconditioned matrix
+  TMatrixD fMatL;       // Smoothing matrix
+  TMatrixD fMatB;       // Data covariance matrix
+  TMatrixD fMatBinv;    // Data covariance matrix inverse
+  TVectorD fVecb;       // Measurement
+  TVectorD fVecbErr;    // Measurement errors
+  TVectorD fVecbTilde;  // Meas. points / errors
+  TVectorD fVecXtrue;   // True solution (for test problems)
+  TVectorD fVecXini;    // Model truth distribution
+  TVectorD fSmoothingWeight;
 
   ClassDef(UnfoldingUtils, 1);
 };
 #endif
-
