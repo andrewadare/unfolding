@@ -62,7 +62,8 @@ void ConvolutionExample()
   // -----------------------------------------------------------------
   TMatrixD L = uu.LMatrix(n, UnfoldingUtils::k2DerivNoBC);
   GSVDResult gsvd = uu.GSVDAnalysis(L,0.5,0,0,"");
-  DrawObject(gsvd.UHist, "surf");
+  TString opt = "SPEC a(30,30,180) dm(0,6)";
+  DrawObject(gsvd.UHist, "surf", "", cList);
   cList->Add(uu.DrawGSVDPlot(gsvd, 1e-5, 1e6));
   gPad->SetName("conv_gsvd_ana");
 
@@ -76,7 +77,7 @@ void ConvolutionExample()
   UnfoldingResult rg = uu.UnfoldTikhonovGSVD(gsvd, regVector);
   Info("", "Finished GSVD analysis.");
 
-  DrawObject(rg.XRegHist,"surf","GSVD solutions", cList); 
+  DrawObject(rg.XRegHist,"surf"/*"SPEC dm(0,2)"*/,"GSVD solutions", cList); 
   gPad->SetName("conv_gsvd_x");
 
   DrawObject(rg.GcvCurve, "alp", "", cList);
@@ -103,6 +104,8 @@ void ConvolutionExample()
   // -----------------------------------------------------------------
   int nIterRL = 200;
   UnfoldingResult rl = uu.UnfoldRichardsonLucy(nIterRL);
+  DrawObject(rl.XRegHist,"surf");
+  DrawObject(rl.LCurve, "alp", "", cList);
   hRL = rl.XRegHist->ProjectionX(Form("rl%d",nIterRL),nIterRL,nIterRL);
   hRL->Scale(1./hRL->GetBinWidth(1));
 
@@ -151,8 +154,6 @@ void ConvolutionExample()
 
   DrawObject(hEff, "", "Efficiency;t;#epsilon_{j}", cList, 700, 500);
   gPad->SetName("conv_resp_eff");
-
-  //  DrawObject(hSVD);
 
   // Draw the problem without solutions
   DrawObject(hTrue, "l", "", cList, 500, 500);

@@ -68,6 +68,10 @@ void ShawExample()
   hTrue->Draw("plsame");
   gsvd.xregHist->Draw("plsame");
 
+  TH1D* gamma2 = uu.Vec2Hist(uu.ElemMult(gsvd.gamma, gsvd.gamma),0,1,"g2");
+  // DrawObject(gamma2);
+  // return;
+
   // General-form Tikhonov algorithm using GSVD ----------------------
   // -----------------------------------------------------------------
   int nLambda = 80;
@@ -95,7 +99,7 @@ void ShawExample()
   // -----------------------------------------------------------------
   int nIterPCGLS = 7;
   int LMatrixType = UnfoldingUtils::k2DerivBC0;
-  UnfoldingResult cg = uu.UnfoldPCGLS(nIterPCGLS,LMatrixType);
+  UnfoldingResult cg = uu.UnfoldPCGLS(nIterPCGLS,LMatrixType, "",gamma2);
   DrawObject(cg.XRegHist,"surf");
 
   SetGraphProps(cg.LCurve,kRed,kRed,kFullCircle,1.2);
@@ -107,7 +111,8 @@ void ShawExample()
     double y = cg.LCurve->GetY()[k];
     ltx.DrawLatex(x, y, Form("%d", k+1)); 
   }
-
+  // DrawObject(&cg.F,"surf");
+  // return;
   TGraphTime* anim1 = Animation(cg.XRegHist, statObjs, "pl", 200 /*ms*/, 
 				kRed, kOpenCircle);
   DrawObject(anim1, "1", "PCGLS", cList, 700, 500);
@@ -115,8 +120,11 @@ void ShawExample()
   // Richardson-Lucy algorithm ---------------------------------------
   // -----------------------------------------------------------------
   int nIterRL = 500;
-  TH1D* hX0 = hMeas; // prior
-  UnfoldingResult rl = uu.UnfoldRichardsonLucy(nIterRL, "", hX0);
+  TH1D* prior = new TH1D("prior", "initial guess",n,0,1);
+  for (int i=1; i<=n; i++) 
+    prior->SetBinContent(i, TMath::Gaus((i-0.5)/n, 0.5, 0.2));
+  uu.SetPrior(prior);
+  UnfoldingResult rl = uu.UnfoldRichardsonLucy(nIterRL);
   DrawObject(rl.XRegHist,"surf");
   SetGraphProps(rl.LCurve,kRed+2,kRed+2,kFullCircle,0.5);
   DrawObject(rl.LCurve, "alp", "", cList);
