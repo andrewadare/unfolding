@@ -80,10 +80,11 @@ void RUExample()
   TMatrixD L = uu.LMatrix(nx, UnfoldingUtils::k2DerivBC0);
   uu.SetLMatrix(L);
   uu.SetPrior(xini);
+  uu.SetVerbosity(0);
 
   // GSVD analysis of the system -----------------------------
   // -----------------------------------------------------------------
-  GSVDResult gsvd = uu.GSVDAnalysis(L,110,0,0,"~");
+  GSVDResult* gsvd = uu.GSVDAnalysis(L,110,0,0,"~");
   uu.DrawGSVDPlot(gsvd, 1e-4, 2e2, "~");
 
   // General-form Tikhonov algorithm using GSVD ----------------------

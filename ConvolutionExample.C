@@ -61,9 +61,9 @@ void ConvolutionExample()
   // GSVD analysis ---------------------------------------------------
   // -----------------------------------------------------------------
   TMatrixD L = uu.LMatrix(n, UnfoldingUtils::k2DerivNoBC);
-  GSVDResult gsvd = uu.GSVDAnalysis(L,0.5,0,0,"");
+  GSVDResult* gsvd = uu.GSVDAnalysis(L,0.5,0,0,"");
   TString opt = "SPEC a(30,30,180) dm(0,6)";
-  DrawObject(gsvd.UHist, "surf", "", cList);
+  DrawObject(gsvd->UHist, "surf", "", cList);
   cList->Add(uu.DrawGSVDPlot(gsvd, 1e-5, 1e6));
   gPad->SetName("conv_gsvd_ana");
 
@@ -81,21 +81,21 @@ void ConvolutionExample()
   gPad->SetName("conv_gsvd_x");
 
   DrawObject(rg.GcvCurve, "alp", "", cList);
-  SetGraphProps(rg.GcvCurve,kMagenta+2,kMagenta+2,kFullCircle,0.5);
+  SetGraphProps(rg.GcvCurve,kMagenta+2,kNone,kMagenta+2,kFullCircle,0.5);
   lt.DrawLatex(0.2, 0.8, Form("#lambda_{min} = %g at k = %d", 
 			      rg.lambdaGcv, rg.kGcv));
   TGraph* ggcv = new TGraph(1);
   ggcv->SetPoint(0,rg.lambdaGcv,rg.GcvCurve->GetY()[rg.kGcv]);
-  SetGraphProps(ggcv,kRed,kRed,kOpenCircle,2);
+  SetGraphProps(ggcv,kRed,kNone,kRed,kOpenCircle,2);
   ggcv->SetLineWidth(2);
   ggcv->Draw("psame");
   gPad->SetName("conv_gsvd_gcv");
 
   DrawObject(rg.LCurve, "alp", "", cList);
-  SetGraphProps(rg.LCurve,kBlue,kBlue,kFullCircle,0.5);
+  SetGraphProps(rg.LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
   TGraph* ggl = new TGraph(1);
   ggl->SetPoint(0,rg.LCurve->GetX()[rg.kGcv],rg.LCurve->GetY()[rg.kGcv]);
-  SetGraphProps(ggl,kRed,kRed,kOpenCircle,2);
+  SetGraphProps(ggl,kRed,kNone,kRed,kOpenCircle,2);
   ggl->SetLineWidth(2);
   ggl->Draw("psame");
   gPad->SetName("conv_gsvd_lcurve");
@@ -121,7 +121,7 @@ void ConvolutionExample()
   hCh2 = cs.XRegHist->ProjectionX(Form("cs%d",30),30,30);
   hCh2->Scale(1./hCh2->GetBinWidth(1));
   DrawObject(cs.LCurve,"alp");
-  SetGraphProps(cs.LCurve,kBlue,kBlue,kFullCircle,0.5);
+  SetGraphProps(cs.LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
 
   // SVD algorithm ---------------------------------------------------
   // -----------------------------------------------------------------

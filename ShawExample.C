@@ -58,19 +58,15 @@ void ShawExample()
   // GSVD analysis ---------------------------------------------------
   // -----------------------------------------------------------------
   TMatrixD L = uu.LMatrix(n, UnfoldingUtils::k2DerivBC0);
-  GSVDResult gsvd = uu.GSVDAnalysis(L, 0.38);
-  DrawObject(gsvd.UHist, "surf");
+  GSVDResult* gsvd = uu.GSVDAnalysis(L, 0.38);
+  DrawObject(gsvd->UHist, "surf");
 
   uu.DrawGSVDPlot(gsvd, 1e-5, 1e2);
 
   DrawObject(hMeas, "pl", "Shaw test problem;x", cList);
   hMeasI->Draw("plsame");
   hTrue->Draw("plsame");
-  gsvd.xregHist->Draw("plsame");
-
-  TH1D* gamma2 = uu.Vec2Hist(uu.ElemMult(gsvd.gamma, gsvd.gamma),0,1,"g2");
-  // DrawObject(gamma2);
-  // return;
+  gsvd->xregHist->Draw("plsame");
 
   // General-form Tikhonov algorithm using GSVD ----------------------
   // -----------------------------------------------------------------
@@ -99,7 +95,7 @@ void ShawExample()
   // -----------------------------------------------------------------
   int nIterPCGLS = 7;
   int LMatrixType = UnfoldingUtils::k2DerivBC0;
-  UnfoldingResult cg = uu.UnfoldPCGLS(nIterPCGLS,LMatrixType, "",gamma2);
+  UnfoldingResult cg = uu.UnfoldPCGLS(nIterPCGLS,LMatrixType, "",gsvd);
   DrawObject(cg.XRegHist,"surf");
 
   SetGraphProps(cg.LCurve,kRed,kRed,kFullCircle,1.2);
