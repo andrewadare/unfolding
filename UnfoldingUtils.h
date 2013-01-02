@@ -64,8 +64,13 @@ struct SVDResult         // Output from SVDAnalysis().
   TH2D* U;               // Left sing. vectors
 };
 
-struct GSVDResult        // Output from GSVDAnalysis().
+class GSVDResult        // Output from GSVDAnalysis().
 {
+ public:
+
+  GSVDResult();
+  virtual ~GSVDResult() {}
+  
   int n;                 // Column count of A (or L)
   int m;                 // Row count of A
   int p;                 // Row count of L
@@ -87,6 +92,7 @@ struct GSVDResult        // Output from GSVDAnalysis().
   TMatrixD covx;         // xini * covw * xini
   TVectorD b;            // Measured RHS vector used (m)
   TVectorD bInc;         // Incompatible b component (I-UU')b (m x m)
+  TVectorD breg;         // Refolded solution
 
   TH2D* UHist;           // Left sing. vectors
   TH2D* XHist;           // GSVD basis vectors
@@ -94,6 +100,7 @@ struct GSVDResult        // Output from GSVDAnalysis().
   // Solution for this lambda
   TH1D* wregHist;        // scaled result w^lambda
   TH1D* xregHist;        // xini_j * w^lambda_j (solution)
+  TH1D* bregHist;        // Refolded distribution A*xreg
 
   // Abs. values (for visual analysis)
   TH1D* UTbAbs;          // Vector of |U'_i*b| values
@@ -108,6 +115,8 @@ struct UnfoldingResult
   // Bin k along y is the kth solution.
   TMatrixD WReg;
   TMatrixD XReg;
+  TMatrixD WRegErr;
+  TMatrixD XRegErr;
 
   // Covariance matrices of w and x (for single best solution)
   TMatrixD wCov;
@@ -229,14 +238,14 @@ class UnfoldingUtils
   UnfoldingResult UnfoldPCGLS(const int nIterations, 
 			      int lMatrixType             = k2DerivBCR,
 			      TString opt                 = "",
-			      const TH1* gamma2           = 0,
+			      const GSVDResult* gsvd      = 0,
 			      const TH2* hA               = 0, 
 			      const TH1* hb               = 0, 
 			      const TH1* hXini            = 0);
   UnfoldingResult UnfoldPCGLS(const int nIterations, 
 			      TMatrixD& L,
 			      TString opt                 = "",
-			      const TH1* gamma2           = 0,
+			      const GSVDResult* gsvd      = 0,
 			      const TH2* hA               = 0, 
 			      const TH1* hb               = 0, 
 			      const TH1* hXini            = 0);
@@ -256,7 +265,7 @@ class UnfoldingUtils
   UnfoldingResult UnfoldChiSqMin(TVectorD& regWts, TString opt = ""); 
   
   // General-form Tikhonov solver based on generalized SVD
-  UnfoldingResult UnfoldTikhonovGSVD(GSVDResult& gsvd,
+  UnfoldingResult UnfoldTikhonovGSVD(GSVDResult* gsvd,
 				     TVectorD& lambda, 
 				     TString opt = "");
   
@@ -268,9 +277,9 @@ class UnfoldingUtils
   // Analysis methods
   TGraph* ResidualNorm(TObjArray* hists, double stepSize = 1.);
   SVDResult SVDAnalysis(TH2* hA=0, TH1* hb=0, TString opt="");
-  GSVDResult GSVDAnalysis(TMatrixD& L, double lambda=0, TH2* hA=0, TH1* hb=0, TString opt="");
+  GSVDResult* GSVDAnalysis(TMatrixD& L, double lambda=0, TH2* hA=0, TH1* hb=0, TString opt="");
   TCanvas* DrawSVDPlot(SVDResult, double ymin, double ymax, TString opt="");
-  TCanvas* DrawGSVDPlot(GSVDResult, double ymin, double ymax, TString opt="");
+  TCanvas* DrawGSVDPlot(GSVDResult*, double ymin, double ymax, TString opt="");
   
   TH2D* UnfoldCovMatrix(int nTrials, 
 			int algo, 

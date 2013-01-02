@@ -375,7 +375,7 @@ UnfoldingUtils::SVDAnalysis(TH2* hA, TH1* hb, TString opt)
   return result;
 }
 
-GSVDResult 
+GSVDResult* 
 UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TString opt)
 {
   // Decompose A, L jointly as A = U*C*X', L = V*S*X'. 
@@ -389,7 +389,7 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   // respectively, and have length p.
 
   static int id = 0; id++;
-  GSVDResult result;
+  GSVDResult* gsvd = new GSVDResult();
 
   // Use stored members: 
   // Select A, \hat{A}, or \tilde{A} ("", "^", or "~")
@@ -438,24 +438,24 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
     double val = g.C(i,i);
     FCd(i,i) = (val > 0.) ? f(i)/val : 0.;
   }
-  result.Ap.ResizeTo(n,m);
-  result.Ap = X*FCd*UT;
+  gsvd->Ap.ResizeTo(n,m);
+  gsvd->Ap = X*FCd*UT;
 
   // Covariance matrices:
   // Cov(w) = Ap*B*Ap'
   // Cov(x)_ik = xini_i Cov(w)_ik xini_k 
-  result.covw.ResizeTo(n,n);
-  result.covx.ResizeTo(n,n);
+  gsvd->covw.ResizeTo(n,n);
+  gsvd->covx.ResizeTo(n,n);
 
   TMatrixD B(fMatB);
   if (opt.Contains("~")) 
     B.UnitMatrix();
   
-  TMatrixD tmp(B, TMatrixD::kMultTranspose, result.Ap);
-  result.covw = result.Ap * tmp;
+  TMatrixD tmp(B, TMatrixD::kMultTranspose, gsvd->Ap);
+  gsvd->covw = gsvd->Ap * tmp;
   for (int i=0; i<n; i++) {
     for (int k=0; k<n; k++) {
-      result.covx(i,k) = fVecXini(i) * result.covw(i,k) * fVecXini(k);
+      gsvd->covx(i,k) = fVecXini(i) * gsvd->covw(i,k) * fVecXini(k);
     }
   }
 
@@ -464,46 +464,50 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   TVectorD xreg = ElemMult(fVecXini, wreg);
 
   // Save to output for parameter optimization analysis
-  result.bInc.ResizeTo(m);
-  result.bInc = (LMatrix(m,kUnitMatrix) - g.U * UT)*b;
+  gsvd->bInc.ResizeTo(m);
+  gsvd->bInc = (LMatrix(m,kUnitMatrix) - g.U * UT)*b;
 
   // Assign output struct members
-  result.n      = n;
-  result.m      = m;
-  result.p      = p;
-  result.lambda = lambda;
-  result.alpha.ResizeTo(n);  result.alpha  = g.alpha;
-  result.beta .ResizeTo(n);  result.beta   = g.beta;
-  result.gamma.ResizeTo(n);  result.gamma  = g.gamma;
-  result.f    .ResizeTo(n);  result.f      = f;
-  result.UTb  .ResizeTo(n);  result.UTb    = utb;
-  result.coeff.ResizeTo(n);  result.coeff  = c;
-  result.regc .ResizeTo(n);  result.regc   = regc;
+  gsvd->n      = n;
+  gsvd->m      = m;
+  gsvd->p      = p;
+  gsvd->lambda = lambda;
+  gsvd->alpha.ResizeTo(n);  gsvd->alpha  = g.alpha;
+  gsvd->beta .ResizeTo(n);  gsvd->beta   = g.beta;
+  gsvd->gamma.ResizeTo(n);  gsvd->gamma  = g.gamma;
+  gsvd->f    .ResizeTo(n);  gsvd->f      = f;
+  gsvd->UTb  .ResizeTo(n);  gsvd->UTb    = utb;
+  gsvd->coeff.ResizeTo(n);  gsvd->coeff  = c;
+  gsvd->regc .ResizeTo(n);  gsvd->regc   = regc;
 
   // Copy A,L,and b to output to ensure that the correct quantities
   // are used later.
-  result.X.ResizeTo(X);      result.X = X;
-  result.U.ResizeTo(g.U);    result.U = g.U;
-  result.V.ResizeTo(g.V);    result.V = g.V;
-  result.L.ResizeTo(L);      result.L = L;
-  result.A.ResizeTo(A);      result.A = A;
-  result.b.ResizeTo(b);      result.b = b;
+  gsvd->X.ResizeTo(X);      gsvd->X = X;
+  gsvd->U.ResizeTo(g.U);    gsvd->U = g.U;
+  gsvd->V.ResizeTo(g.V);    gsvd->V = g.V;
+  gsvd->L.ResizeTo(L);      gsvd->L = L;
+  gsvd->A.ResizeTo(A);      gsvd->A = A;
+  gsvd->b.ResizeTo(b);      gsvd->b = b;
 
-  result.UHist  = Matrix2Hist(g.U, Form("U_gsvd_%d",id),
+  gsvd->UHist  = Matrix2Hist(g.U, Form("U_gsvd_%d",id),
 			      fTrueX1, fTrueX2,0,n);
-  result.XHist  = Matrix2Hist(X, Form("X_gsvd_%d",id),
+  gsvd->XHist  = Matrix2Hist(X, Form("X_gsvd_%d",id),
 			      fTrueX1, fTrueX2,0,n);
-  result.wregHist = Vec2Hist(wreg, fTrueX1,fTrueX2,
+  gsvd->wregHist = Vec2Hist(wreg, fTrueX1,fTrueX2,
 			     Form("gsvd_wreg_%d",id), 
 			     Form("w (#lambda = %g)", lambda));
-  result.xregHist = Vec2Hist(xreg, fTrueX1,fTrueX2,
+  gsvd->xregHist = Vec2Hist(xreg, fTrueX1,fTrueX2,
 			     Form("gsvd_xreg_%d",id),
   			     Form("x (#lambda = %g)", lambda));
+
+  gsvd->bregHist = Vec2Hist(fMatAhat*xreg, fMeasX1,fMeasX2,
+			     Form("gsvd_breg_%d",id),
+  			     Form("Ax_{#lambda} (#lambda = %g)", lambda));
   
   // Assign uncertainties
   for (int j=0; j<n; j++) {
-    result.wregHist->SetBinError(j+1, TMath::Sqrt(result.covw(j,j)));
-    result.xregHist->SetBinError(j+1, TMath::Sqrt(result.covx(j,j)));
+    gsvd->wregHist->SetBinError(j+1, TMath::Sqrt(gsvd->covw(j,j)));
+    gsvd->xregHist->SetBinError(j+1, TMath::Sqrt(gsvd->covx(j,j)));
   }
   
   // Absolute values for plotting
@@ -515,16 +519,16 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
     if (cAbs(i) < 0)     cAbs(i) *= -1;
     if (rcAbs(i) < 0)   rcAbs(i) *= -1;
   }
-  result.UTbAbs   = Vec2Hist(utbAbs, 0,n,Form("gsvd_utb_abs%d",id), "#||{u^{T}#upointb} ");
-  result.coeffAbs = Vec2Hist(cAbs, 0,n,Form("gsvd_c_abs%d",id), "#||{u^{T}#upointb}/#alpha ");
-  result.regcAbs  = Vec2Hist(rcAbs, 0,n,Form("gsvd_rc_abs%d",id), "f#||{u^{T}#upointb} ");
+  gsvd->UTbAbs   = Vec2Hist(utbAbs, 0,n,Form("gsvd_utb_abs%d",id), "#||{u^{T}#upointb} ");
+  gsvd->coeffAbs = Vec2Hist(cAbs, 0,n,Form("gsvd_c_abs%d",id), "#||{u^{T}#upointb}/#alpha ");
+  gsvd->regcAbs  = Vec2Hist(rcAbs, 0,n,Form("gsvd_rc_abs%d",id), "f#||{u^{T}#upointb} ");
 
-  SetTH1Props(result.UTbAbs,   kBlue, 0, kBlue, kFullSquare, 1.0);
-  SetTH1Props(result.coeffAbs, kRed, 0, kRed, kOpenSquare, 1.0);
-  SetTH1Props(result.regcAbs, kMagenta+1, 0, kMagenta+1, kOpenCircle, 1.0);
-  SetTH1Props(result.xregHist, kGreen+2, 0, kGreen+2, kFullCircle, 1.0);
+  SetTH1Props(gsvd->UTbAbs,   kBlue, 0, kBlue, kFullSquare, 1.0);
+  SetTH1Props(gsvd->coeffAbs, kRed, 0, kRed, kOpenSquare, 1.0);
+  SetTH1Props(gsvd->regcAbs, kMagenta+1, 0, kMagenta+1, kOpenCircle, 1.0);
+  SetTH1Props(gsvd->xregHist, kGreen+2, 0, kGreen+2, kFullCircle, 1.0);
 
-  return result;
+  return gsvd;
 }
 
 TCanvas* 
@@ -561,29 +565,29 @@ UnfoldingUtils::DrawSVDPlot(SVDResult svdhists, double ymin, double ymax, TStrin
 }
 
 TCanvas* 
-UnfoldingUtils::DrawGSVDPlot(GSVDResult gsvd, double ymin, double ymax, TString opt)
+UnfoldingUtils::DrawGSVDPlot(GSVDResult* gsvd, double ymin, double ymax, TString opt)
 {
   static int i=0; i++;
   TCanvas* c = new TCanvas(Form("cgsvd%d",i), Form("cgsvd%d",i), 1);
   TLegend* leg = new TLegend(0.75, 0.75, 0.99, 0.99,
-			     Form("#lambda = %g", gsvd.lambda));
-  int nx = gsvd.UTbAbs->GetNbinsX();
+			     Form("#lambda = %g", gsvd->lambda));
+  int nx = gsvd->UTbAbs->GetNbinsX();
   TH1F* h = new TH1F(Form("hgsvd%d",i), "GSVD Components;column index i;", 
 		     200, 0, nx);
   h->Draw();
   h->GetYaxis()->SetRangeUser(ymin, ymax);
   gPad->SetLogy();
-  gsvd.UTbAbs->Draw("plsame");
-  gsvd.regcAbs->Draw("plsame");
+  gsvd->UTbAbs->Draw("plsame");
+  gsvd->regcAbs->Draw("plsame");
 
 
-  leg->AddEntry(gsvd.UTbAbs, gsvd.UTbAbs->GetTitle(), "ep");
-  leg->AddEntry(gsvd.regcAbs, gsvd.regcAbs->GetTitle(), "ep");
+  leg->AddEntry(gsvd->UTbAbs, gsvd->UTbAbs->GetTitle(), "ep");
+  leg->AddEntry(gsvd->regcAbs, gsvd->regcAbs->GetTitle(), "ep");
 
   // Draw coeffs also if requested
   if (opt.Contains("c")) {
-    gsvd.coeffAbs->Draw("plsame");
-    leg->AddEntry(gsvd.coeffAbs, gsvd.coeffAbs->GetTitle(), "ep");
+    gsvd->coeffAbs->Draw("plsame");
+    leg->AddEntry(gsvd->coeffAbs, gsvd->coeffAbs->GetTitle(), "ep");
   // TODO: add damped coeffs f|U'*b|/alpha
   }
   
@@ -960,7 +964,7 @@ UnfoldingUtils::UnfoldChiSqMin(TVectorD& regWts, TString opt)
 }
 
 UnfoldingResult
-UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult& gsvd,
+UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
 				   TVectorD& lambda, 
 				   TString /*opt*/)
 {
@@ -968,9 +972,9 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult& gsvd,
   static int id=0; id++; // So this fn. can be called more than once
 
   int nk = lambda.GetNrows();
-  int n  = gsvd.n;
-  int m  = gsvd.m; 
-  int p  = gsvd.p;
+  int n  = gsvd->n;
+  int m  = gsvd->m; 
+  int p  = gsvd->p;
   result.WReg.ResizeTo(n, nk);
   result.XReg.ResizeTo(n, nk);
   result.LCurve = new TGraph(nk);
@@ -986,7 +990,7 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult& gsvd,
     TVectorD f(n);
     for (int i=0; i<n; i++) {
       if (i >= n-p) {
-	double g2 = gsvd.gamma(i)*gsvd.gamma(i); 
+	double g2 = gsvd->gamma(i)*gsvd->gamma(i); 
 	f(i) = g2 / (g2 + l*l);
       }
       else
@@ -994,8 +998,8 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult& gsvd,
     }
     
     // Damped GSVD coefficients
-    TVectorD regc = ElemMult(f, gsvd.coeff);
-    TVectorD wreg = gsvd.X*regc;
+    TVectorD regc = ElemMult(f, gsvd->coeff);
+    TVectorD wreg = gsvd->X*regc;
     TVectorD xreg = ElemMult(fVecXini, wreg);
 
     // Regularized solution
@@ -1008,20 +1012,20 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult& gsvd,
     // ---------------------------------------------------------------
 
     // Compute Lx_reg
-    TVectorD vec = ElemDiv(gsvd.UTb, gsvd.gamma);
+    TVectorD vec = ElemDiv(gsvd->UTb, gsvd->gamma);
     vec = ElemMult(f, vec);
     TVectorD Lx = vec.GetSub(n-p, n-1);
-    Lx = gsvd.V * Lx;
+    Lx = gsvd->V * Lx;
     double lxnorm = TMath::Sqrt(Lx*Lx);
 
     // Compute r = b - Ax_reg
     TVectorD f1(f);
     for (int j=0; j<n; j++)
       f1(j) = 1-f(j);
-    vec = ElemMult(f1, gsvd.UTb);
+    vec = ElemMult(f1, gsvd->UTb);
 
-    TMatrixD Up = gsvd.U.GetSub(0,m-1,n-p,n-1); // m x n --> m x p
-    TVectorD r = Up * vec.GetSub(n-p, n-1) - gsvd.bInc;
+    TMatrixD Up = gsvd->U.GetSub(0,m-1,n-p,n-1); // m x n --> m x p
+    TVectorD r = Up * vec.GetSub(n-p, n-1) - gsvd->bInc;
     double rnorm = TMath::Sqrt(r*r);
     
     double gcv = rnorm / (m - f.Sum());
@@ -1303,7 +1307,7 @@ UnfoldingResult
 UnfoldingUtils::UnfoldPCGLS(const int nIterations, 
 			    int LType,
 			    TString opt,
-			    const TH1* gamma2,
+			    const GSVDResult* gsvd,
 			    const TH2* hA,
 			    const TH1* hb,
 			    const TH1* hXini)
@@ -1312,7 +1316,7 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
   return UnfoldPCGLS(nIterations, 
 		     L,
 		     opt,
-		     gamma2,
+		     gsvd,
 		     hA,
 		     hb,
 		     hXini);
@@ -1322,7 +1326,7 @@ UnfoldingResult
 UnfoldingUtils::UnfoldPCGLS(const int nIterations, 
 			    TMatrixD& L,
 			    TString opt,
-			    const TH1* gamma2,
+			    const GSVDResult* gsvd,
 			    const TH2* hA,
 			    const TH1* hb,
 			    const TH1* hXini)
@@ -1361,20 +1365,38 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
 
   TMatrixD W = Null(L);          // Nullspace of L
   int p = L.GetNrows();
-
-
- // Columns are filter factors at iteration k
+ 
+  TVectorD g2(fN);
+  if (gsvd)
+    g2 = ElemMult(gsvd->gamma, gsvd->gamma);
+  TMatrixD B(fMatB);
+  if (opt.Contains("~")) 
+    B.UnitMatrix();
+  
+  // Columns are filter factors at iteration k
   result.F.ResizeTo(fN,nIterations);
   TVectorD Fd(fN);
+  TVectorD fk(fN); // column k of result.F
+  double gcvMin = 1e99;
 
   result.WReg.ResizeTo(fN,nIterations);
   result.XReg.ResizeTo(fN,nIterations);
+  result.WRegErr.ResizeTo(fN,nIterations);
+  result.XRegErr.ResizeTo(fN,nIterations);
+  result.wCov.ResizeTo(fN,fN);
+  result.xCov.ResizeTo(fN,fN);
 
   result.LCurve = new TGraph(nIterations);
+  result.GcvCurve = new TGraph(nIterations);
+  
   result.LCurve->SetNameTitle(Form("LCurve_PCGLS_%d",id), 
 			      Form("PCGLS L-Curve;"
 				   "Residual norm ||Ax_{k}-b||_{2};"
 				   "Solution norm ||Lx_{k}||_{2}"));
+  result.GcvCurve->SetNameTitle(Form("GcvCurve_PCGLS_%d",id), 
+				Form("PCGLS GCV Curve;"
+				     "Iteration k;"
+				     "G(k)"));
   
   // Store q1 vectors as columns of Q1n for re-orthogonalization
   TMatrixD Q1n(p, nIterations+1);
@@ -1445,37 +1467,73 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
     result.LCurve->SetPoint(k-1, TMath::Sqrt(r*r), TMath::Sqrt((L*x)*(L*x)));
 
     // Filter factors (if GSVD gamma values available)
-    if (gamma2) {
+    if (gsvd) {
+      
       if (k==1) {
-	for (int i=0; i<fN; i++) {
-	  double g2 = gamma2->GetBinContent(i+1);
-	  result.F(i,0) = alpha*g2;
-	  Fd(i) = g2*(1. - alpha*g2 + beta);
-	}
+	fk = alpha*g2;
+	Fd = g2 - ElemMult(g2, fk) + beta*g2;
+	TMatrixDColumn(result.F, k-1) = fk;
       }
       else {
-	for (int i=0; i<fN; i++) {
-	  double g2 = gamma2->GetBinContent(i+1);
-	  result.F(i,k-1) = result.F(i,k-2) + alpha*Fd(i);
-	  Fd(i)  = g2 - g2*result.F(i,k-1) + beta*Fd(i);
-	}
+	fk += alpha*Fd;
+	Fd = g2 - ElemMult(g2, fk) + beta*Fd;
+	TMatrixDColumn(result.F, k-1) = fk;
       }
-      if (k > 2) { // This needs work.
+      if (k > 2) {
 	for (int i=0; i<fN; i++) {
 	  if (TMath::Abs(result.F(i,k-2)-1) < 1e-4)
-	    result.F(i,k-2) = 1.0;
-	  if (TMath::Abs(result.F(i,k-3)-1) < 1e-4)
-	    result.F(i,k-3) = 1.0;
-
-	  if (TMath::Abs(result.F(i,k-1)-1) < 1e-4)
 	    result.F(i,k-1) = 1.0;
+	  if (TMath::Abs(result.F(i,k-3)-1) < 1e-4)
+	    result.F(i,k-1) = 1.0;
+
+	  if (result.F(i,k-1) > 1.)
+	    result.F(i,k-1) = 1.0;
+
+	  fk(i) = result.F(i,k-1);
 	}
       }
+      
+      // Generalized cross-validation curve
+      TVectorD resid = A*x - b;
+      double gcv = TMath::Sqrt(resid*resid) / (fM - fk.Sum());
+      result.GcvCurve->SetPoint(k-1, k, gcv);
+      if (gcv < gcvMin) {
+	gcvMin = gcv;
+	result.kGcv = k;
+      }
+      
+      // Compute A^#, the regularized inverse of A, using these filter
+      // factors.
+      TMatrixD FCd(fN,fN);
+      TMatrixD UT(TMatrixD::kTransposed, gsvd->U);
+      for (int i=0; i<fN; i++) {
+	double a = gsvd->alpha(i);
+	FCd(i,i) = (a > 0.) ? result.F(i,k-1)/a : 0.;
+      }
+      TMatrixD Ap = gsvd->X * FCd * UT;
+      
+      // Covariance matrices:
+      // Cov(w) = Ap*B*Ap'
+      // Cov(x)_ik = xini_i Cov(w)_ik xini_k 
+      result.wCov = Ap * TMatrixD(B, TMatrixD::kMultTranspose, Ap);
+      for (int i=0; i<fN; i++) {
+	for (int j=0; j<fN; j++) {
+	  result.xCov(i,j) = fVecXini(i) * result.wCov(i,j) * fVecXini(j);
+	}
+      }
+      
+      // Assign uncertainty
+      for (int j=0; j<fN; j++)
+	result.WRegErr(j,k-1) = result.wCov(j,j);
+      for (int j=0; j<fN; j++)
+	result.XRegErr(j,k-1) = result.xCov(j,j);
+      
     }
     
   } // end iteration loop
+  
   cout << endl;
-
+  
   // Solutions to Atilde*w = btilde
   result.WRegHist = Matrix2Hist(result.WReg, Form("W_CG_%d",id),
 				fTrueX1, fTrueX2,0,nIterations);
@@ -1494,6 +1552,24 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
   result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
 
   result.XRegHist->SetTitle("CGLS solutions x_{k};x;iteration k");
+
+  // Add uncertainties
+  TH2D* errw = Matrix2Hist(result.WRegErr, Form("errW_CG_%d",id),
+			   fTrueX1, fTrueX2,0,nIterations);
+  TH2D* errx = Matrix2Hist(result.XRegErr, Form("errX_CG_%d",id),
+			   fTrueX1, fTrueX2,0,nIterations);
+
+  for (int j=1; j<=fN; j++) {
+    for (int k=1; k<nIterations; k++) {
+      result.WRegHist->SetBinError(j,k,errw->GetBinContent(j,k));
+      result.XRegHist->SetBinError(j,k,errx->GetBinContent(j,k));
+    }
+  }
+
+  result.hGcv = 
+    result.XRegHist->ProjectionX(Form("cg_%d_iter%d",id,result.kGcv),
+				 result.kGcv,result.kGcv);
+  
   return result;
 }
 
@@ -2237,7 +2313,7 @@ UnfoldingUtils::UnfoldCovMatrix(int nTrials,
 
     switch (algo) {
     case kGSVDAlgo: 
-      hUnf = GSVDAnalysis(fMatL, regPar, 0, 0, opt).xregHist;
+      hUnf = GSVDAnalysis(fMatL, regPar, 0, 0, opt)->xregHist;
       break;
     case kSVDAlgo: 
       hUnf = UnfoldSVD(regPar, 0, opt, 0, 0, 0); 
@@ -2286,7 +2362,7 @@ UnfoldingUtils::UnfoldCovMatrix(int nTrials,
     }
     switch (algo) {
     case kGSVDAlgo: 
-      hUnf = GSVDAnalysis(fMatL, regPar, 0, 0, opt).xregHist;
+      hUnf = GSVDAnalysis(fMatL, regPar, 0, 0, opt)->xregHist;
       break;
     case kSVDAlgo: 
       hUnf = UnfoldSVD(regPar, 0, opt, 0, 0, 0); 
@@ -3143,4 +3219,24 @@ UnfoldingUtils::SwapElements(TVectorD& v, int j1, int j2)
   v2(j2) = v(j1);
   
   v = v2;
+}
+
+// -------------------------------------------------------------------
+// ----------------------- Support classes ---------------------------
+// -------------------------------------------------------------------
+
+GSVDResult::GSVDResult() :
+  n(0),                 // Column count of A (or L)
+  m(0),                 // Row count of A
+  p(0),                 // Row count of L
+  lambda(0.0),         // Regularization parameter used
+  UHist(0),           // Left sing. vectors
+  XHist(0),          // GSVD basis vectors
+  wregHist(0),        // scaled result w^lambda
+  xregHist(0),        // xini_j * w^lambda_j (solution)
+  bregHist(0),        // Refolded distribution A*xreg
+  UTbAbs(0),          // Vector of |U'_i*b| values
+  coeffAbs(0),        // Vector of |U'_i*b|/alpha_i values
+  regcAbs(0)         // Regularized (filtered) coeffs.
+{
 }
