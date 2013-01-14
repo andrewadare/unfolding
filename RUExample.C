@@ -87,19 +87,21 @@ void RUExample()
   GSVDResult* gsvd = uu.GSVDAnalysis(L,110,0,0,"~");
   uu.DrawGSVDPlot(gsvd, 1e-4, 2e2, "~");
 
+
   // General-form Tikhonov algorithm using GSVD ----------------------
   // -----------------------------------------------------------------
   int nLambda = 80;
-  TVectorD regVector(nLambda);
-  for (int k=0; k<nLambda; k++) 
-    regVector(k) = 4*k+0.5;
+  TVectorD regVector(nLambda);  regVector(0) = 0.;
+  for (int k=1; k<nLambda; k++) 
+    regVector(k) = 0.005*TMath::Exp(0.15*k);
+    //    regVector(k) = 4*k+0.5;
   
   UnfoldingResult rg = uu.UnfoldTikhonovGSVD(gsvd, regVector);
   rg.WRegHist->Scale(double(nx)/(xt2-xt1));
   rg.XRegHist->Scale(double(nx)/(xt2-xt1));
-  DrawObject(rg.WRegHist, "surf");
-  DrawObject(rg.XRegHist, "surf");
-  DrawObject(rg.GcvCurve, "alp");
+  DrawObject(rg.WRegHist, "surf", "ru_gsvd_wreg2d"); gPad->SetLogy();
+  DrawObject(rg.XRegHist, "surf", "ru_gsvd_xreg2d"); gPad->SetLogy();
+  DrawObject(rg.GcvCurve, "alp",  "ru_gsvd_gcv"); gPad->SetLogx();
   SetGraphProps(rg.GcvCurve,kMagenta+2,kNone,kMagenta+2,kFullCircle,0.5);
   lt.DrawLatex(0.2, 0.8, Form("#lambda_{min} = %g at k = %d", 
 			      rg.lambdaGcv, rg.kGcv));
@@ -109,7 +111,8 @@ void RUExample()
   ggcv->SetLineWidth(2);
   ggcv->Draw("psame");
   
-  DrawObject(rg.LCurve, "alp");
+  DrawObject(rg.LCurve, "alp", "ru_gsvd_lcurve");
+  gPad->SetLogx(); gPad->SetLogy();
   SetGraphProps(rg.LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
 
   // Only works for square problems
@@ -120,15 +123,15 @@ void RUExample()
 
   // Chi squared minimization ----------------------------------------
   // -----------------------------------------------------------------
-  TVectorD regWts(20);
-  for (int k=0; k<20; k++)
-    regWts(k) = TMath::Power(2,k)*1e-8;
+  TVectorD regWts(20);  regWts(0) = 0.;
+  for (int k=1; k<20; k++)
+    regWts(k) = 1e-9*TMath::Exp(0.5*k); //TMath::Power(2,k)*1e-8;
   uu.SetRegType(UnfoldingUtils::kTotCurv);
   UnfoldingResult cs = uu.UnfoldChiSqMin(regWts);
   cs.XRegHist->Scale(double(nx)/(xt2-xt1));
-  DrawObject(cs.XRegHist,"surf");
-  DrawObject(cs.LCurve,"alp");
-  SetGraphProps(cs.LCurve,kBlue,kBlue,kFullCircle,0.5);
+  DrawObject(cs.XRegHist,"surf", "ru_cs_xreg2d"); gPad->SetLogy();
+  DrawObject(cs.LCurve,"alp", "ru_cs_lcurve");
+  SetGraphProps(cs.LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
   hCh2 = cs.XRegHist->ProjectionX(Form("cs%d",10),10,10);
 
   // PCGLS algorithm -------------------------------------------------
@@ -137,8 +140,8 @@ void RUExample()
   UnfoldingResult cg = uu.UnfoldPCGLS(nCG, L,"~");
   cg.WRegHist->Scale(double(nx)/(xt2-xt1));
   cg.XRegHist->Scale(double(nx)/(xt2-xt1));
-  DrawObject(cs.XRegHist,"surf");
-  DrawObject(cg.LCurve,"alp");
+  DrawObject(cg.XRegHist,"surf", "ru_cg_xreg2d");
+  DrawObject(cg.LCurve,"alp", "ru_cg_lcurve");
   SetGraphProps(cg.LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
   hCG = cg.XRegHist->ProjectionX(Form("cg%d",5),5,5);
   
@@ -170,21 +173,21 @@ void RUExample()
   rg.hGcv->Scale(1./rg.hGcv->GetBinWidth(1));
 
   // MC and data histos
-  DrawObject(hxeff);
-  DrawObject(xini);
+  DrawObject(hxeff, "", "ru_eff");
+  DrawObject(xini, "", "ru_xini_bini");
   bini->SetLineColor(kBlue);
   bini->Draw("same");
-  DrawObject(datatrue);
+  DrawObject(datatrue, "", "ru_data");
   data->Draw("same");
 
   // Response matrix, as generated (counts)
-  DrawObject(Adet,"colz");
+  DrawObject(Adet,"colz","ru_A");
 
   // Probability resp. matrix (normalized to efficiency)
   TH2D* hAprob = uu.GetAProbHist();
   hAprob->SetTitle("Detector response (normalized to efficiency);"
 		   "measured;true");
-  DrawObject(hAprob,"colz");
+  DrawObject(hAprob,"colz","ru_Ahat");
 
     // Covariance matrices
   if (0) {
@@ -196,14 +199,14 @@ void RUExample()
     // Works for any unfolding method, SVD shown here.
     TH2D* hUcov = uu.UnfoldCovMatrix(100, UnfoldingUtils::kGSVDAlgo, 
 				     110., "~");
-    DrawObject(hUcov, "colz");
+    DrawObject(hUcov, "colz", "ru_mc_xcov");
     // hXcov->Add(hUcov); // Add independent contributions
     for (int j=1; j<=uu.GetN(); j++)
       rg.hGcv->SetBinError(j, TMath::Sqrt(hUcov->GetBinContent(j,j)));
   }
 
   // Unfolding results
-  DrawObject(datatrue, "ep");
+  DrawObject(datatrue, "ep", "ru_results");
   data->Draw("epsame");
   //  hSVD->Draw("epsame");
   rg.hGcv->Draw("epsame");
@@ -221,8 +224,8 @@ void RUExample()
 			      -10.,0,10,5000);
 
   if (1) {
-    DrawObject(aRL, "2", "Richardson-Lucy", cList, 700, 500);
-    DrawObject(aCG, "2", "Conjugate Gradient for Least Squares", cList, 700, 500);
+    DrawObject(aRL, "", "ru_anim_rl", cList, 700, 500);
+    DrawObject(aCG, "", "ru_anim_cg", cList, 700, 500);
   }
   else {
     // Avoid appending to old gifs
