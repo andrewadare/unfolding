@@ -573,10 +573,12 @@ UnfoldingUtils::DrawGSVDPlot(GSVDResult* gsvd, double ymin, double ymax, TString
   static int i=0; i++;
   TCanvas* c = new TCanvas(Form("cgsvd%d",i), Form("cgsvd%d",i), 1);
   TLegend* leg = new TLegend(0.75, 0.75, 0.99, 0.99,
-			     Form("#lambda = %g", gsvd->lambda));
+			     Form("NDF_{eff} = %.1f", 
+				  gsvd->f.Sum()));
   int nx = gsvd->UTbAbs->GetNbinsX();
-  TH1F* h = new TH1F(Form("hgsvd%d",i), "GSVD Components;column index i;", 
-		     200, 0, nx);
+  TH1F* h = new TH1F(Form("hgsvd%d",i), 
+		     Form("GSVD Components (#lambda = %g);column index i;",
+			  gsvd->lambda), 200, 0, nx);
   h->Draw();
   h->GetYaxis()->SetRangeUser(ymin, ymax);
   gPad->SetLogy();
@@ -929,12 +931,33 @@ UnfoldingUtils::UnfoldChiSqMin(TVectorD& regWts, TString opt)
   if (opt.Contains("~"))
     fTilde = true;
   
-  result.XRegHist = new TH2D(Form("hChsq%d",id), Form("hChsq%d",id),
-			     fN, fTrueX1, fTrueX2, nRegWts, 0, nRegWts);
+  ////////////////////
+  double kbins[nRegWts+1], xbins[fN+1];
+  for (int j=0; j<=fN; j++) {
+    xbins[j] = fTrueX1 + j*(fTrueX2-fTrueX1)/fN;
+  }
+  for (int k=0; k<nRegWts; k++) {
+    kbins[k] = regWts(k);
+  }
+  kbins[nRegWts] = 2*kbins[nRegWts-1]-kbins[nRegWts-2];
+
+  //  result.XRegHist = Matrix2Hist(result.XReg, XRegErr, Form("xregHist_%d",id), xbins, kbins);
+  result.XRegHist = new TH2D(Form("hChsq%d",id), Form("Minimum #chi^{2}_{reg} solutions"),
+			     fN, xbins, nRegWts, kbins);
+  
   result.XRegHist->GetXaxis()->CenterTitle();
   result.XRegHist->GetYaxis()->CenterTitle();
   result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
   result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
+  result.XRegHist->SetTitle("GSVD solutions: x_{#lambda};x;#lambda");
+  ////////////////////
+
+  // result.XRegHist = new TH2D(Form("hChsq%d",id), Form("hChsq%d",id),
+  // 			     fN, fTrueX1, fTrueX2, nRegWts, 0, nRegWts);
+  // result.XRegHist->GetXaxis()->CenterTitle();
+  // result.XRegHist->GetYaxis()->CenterTitle();
+  // result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
+  // result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
   
   result.LCurve = new TGraph();
   result.LCurve->SetTitle("TMinuit L-Curve;Unregulated total #chi^{2};total curvature");
@@ -993,11 +1016,6 @@ UnfoldingUtils::UnfoldChiSqMin(TVectorD& regWts, TString opt)
     result.LCurve->SetPoint(k, RegChi2(tmx), Curvature(w));    
   } // k loop
   
-  result.XRegHist->GetXaxis()->CenterTitle();
-  result.XRegHist->GetYaxis()->CenterTitle();
-  result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
-  result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
-
   return result;
 }
 
