@@ -5,6 +5,7 @@
 #include "TSystem.h"
 #include "TH1.h"
 #include "TH2.h"
+#include "TH3.h"
 #include "TMath.h"
 #include "TDecompSVD.h"
 #include "TDecompQRH.h"
@@ -450,7 +451,9 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   TMatrixD B(fMatB);
   if (opt.Contains("~")) 
     B.UnitMatrix();
-  
+  gsvd->covb.ResizeTo(m,m);
+  gsvd->covb = B;
+
   TMatrixD tmp(B, TMatrixD::kMultTranspose, gsvd->Ap);
   gsvd->covw = gsvd->Ap * tmp;
   for (int i=0; i<n; i++) {
@@ -784,6 +787,41 @@ UnfoldingUtils::Matrix2Hist(TMatrixD& A, TString hName,
   return h;
 }
 
+TH2D* 
+UnfoldingUtils::Matrix2Hist(TMatrixD& A, TString hName, 
+			    double xbins[], double ybins[])
+{
+  int m = A.GetNrows();
+  int n = A.GetNcols();
+  TH2D* h = new TH2D(hName.Data(),hName.Data(),m,xbins,n,ybins);
+  
+  for (int i=0; i<m; i++) {
+    for (int j=0; j<n; j++) {
+	h->SetBinContent(i+1, j+1, A(i,j));
+    }
+  }
+  
+  return h;
+}
+
+TH2D* 
+UnfoldingUtils::Matrix2Hist(TMatrixD& A, TMatrixD& errA, TString hName, 
+			    double xbins[], double ybins[])
+{
+  int m = A.GetNrows();
+  int n = A.GetNcols();
+  TH2D* h = new TH2D(hName.Data(),hName.Data(),m,xbins,n,ybins);
+  
+  for (int i=0; i<m; i++) {
+    for (int j=0; j<n; j++) {
+      h->SetBinContent(i+1, j+1, A(i,j));
+      h->SetBinError(i+1, j+1, errA(i,j));
+    }
+  }
+  
+  return h;
+}
+
 
 TH1D* 
 UnfoldingUtils::Vec2Hist(const TVectorD& v, Double_t x1, Double_t x2, 
@@ -975,12 +1013,32 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   int n  = gsvd->n;
   int m  = gsvd->m; 
   int p  = gsvd->p;
+  TMatrixD WRegErr(n,nk);  
+  TMatrixD XRegErr(n,nk);
   result.WReg.ResizeTo(n, nk);
   result.XReg.ResizeTo(n, nk);
+
   result.LCurve = new TGraph(nk);
   result.GcvCurve = new TGraph(nk);
+  result.hwCov = new TH3D(Form("hwCov_gsvd_%d", id),
+			  Form("hwCov_gsvd_%d", id),
+			  fN,fTrueX1,fTrueX2,
+			  fN,fTrueX1,fTrueX2,
+			  nk, lambda(0), lambda(nk-1));
+  result.hxCov = new TH3D(Form("hxCov_gsvd_%d", id),
+			  Form("hxCov_gsvd_%d", id),
+			  fN,fTrueX1,fTrueX2,
+			  fN,fTrueX1,fTrueX2,
+			  nk, lambda(0), lambda(nk-1));
+
   result.lambdaGcv = 0;
   double gcvMin = 1e99;
+
+  // Stuff for computing covariance
+  TMatrixD B(gsvd->covb); // Error matrix of b
+  TMatrixD FCd(n,n);      // Filter factor matrix * pseudoinverse(diag(alpha))
+  TMatrixD Ap(n,m);       // Regularized inverse A^#
+  TMatrixD UT(TMatrixD::kTransposed, gsvd->U);  
 
   // Scan over lambda values, generate nk solutions
   for (int k=0; k<nk; k++) {
@@ -1001,6 +1059,26 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
     TVectorD regc = ElemMult(f, gsvd->coeff);
     TVectorD wreg = gsvd->X*regc;
     TVectorD xreg = ElemMult(fVecXini, wreg);
+
+    // Covariance matrices:
+    // Cov(w) = Ap*B*Ap'
+    // Cov(x)_ik = xini_i Cov(w)_ik xini_k
+    for (int i=0; i<fN; i++) {
+      FCd(i,i) = (gsvd->alpha(i) > 0.) ? f(i)/gsvd->alpha(i) : 0.;
+    }
+    Ap = gsvd->X * FCd * UT; 
+    TMatrixD covw = Ap * TMatrixD(B, TMatrixD::kMultTranspose, Ap);
+    TMatrixD covx(covw);
+    for (int i=0; i<n; i++) {
+      for (int j=0; j<n; j++) {
+	double cw = covw(i,j);
+	double cx = fVecXini(i) * cw * fVecXini(j);
+	result.hwCov->SetBinContent(i+1,j+1,k+1,cw);
+	result.hxCov->SetBinContent(i+1,j+1,k+1,cx);
+	if (i==j) WRegErr(j,k) = TMath::Sqrt(cw); 
+	if (i==j) XRegErr(j,k) = TMath::Sqrt(cx); 
+      }
+    }
 
     // Regularized solution
     for (int j=0; j<n; j++) {
@@ -1044,23 +1122,28 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   result.LCurve->SetTitle("GSVD L-Curve;||Ax_{#lambda}-b||_{2};||Lx_{#lambda}||_{2}");
   result.GcvCurve->SetNameTitle("gsvd_gcv","GSVD cross-validation curve;"
 				"#lambda;G(#lambda)");
+  double kbins[nk+1], xbins[fN+1];
+  for (int j=0; j<=fN; j++) {
+    xbins[j] = fTrueX1 + j*(fTrueX2-fTrueX1)/fN;
+  }
+  for (int k=0; k<nk; k++) {
+    kbins[k] = lambda(k);
+  }
+  kbins[nk] = 2*kbins[nk-1]-kbins[nk-2];
 
-  result.WRegHist = Matrix2Hist(result.WReg, Form("wregHist_%d",id),
-				fTrueX1, fTrueX2,lambda(0),lambda(nk-1));
+  result.WRegHist = Matrix2Hist(result.WReg, WRegErr, Form("wregHist_%d",id), xbins, kbins);
   result.WRegHist->GetXaxis()->CenterTitle();
   result.WRegHist->GetYaxis()->CenterTitle();
   result.WRegHist->GetXaxis()->SetTitleOffset(1.8);
   result.WRegHist->GetYaxis()->SetTitleOffset(1.8);
-
   result.WRegHist->SetTitle("GSVD solutions: w_{#lambda};w;#lambda");
 
-  result.XRegHist = Matrix2Hist(result.XReg, Form("xregHist_%d",id),
-				fTrueX1, fTrueX2,lambda(0),lambda(nk-1));
+
+  result.XRegHist = Matrix2Hist(result.XReg, XRegErr, Form("xregHist_%d",id), xbins, kbins);
   result.XRegHist->GetXaxis()->CenterTitle();
   result.XRegHist->GetYaxis()->CenterTitle();
   result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
   result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
-
   result.XRegHist->SetTitle("GSVD solutions: x_{#lambda};x;#lambda");
   result.hGcv = 
     result.XRegHist->ProjectionX(Form("gsvd_%d_bin%d",id,kg),kg,kg);

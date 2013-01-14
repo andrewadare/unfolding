@@ -1,4 +1,4 @@
-bool savePDF = 0;
+bool savePDF = false;
 const int n=32;                     // number of points
 
 TH1D *hTrue=0;
@@ -84,7 +84,7 @@ void ShawExample()
 			      rg.lambdaGcv, rg.kGcv));
   TGraph* ggcv = new TGraph(1);
   ggcv->SetPoint(0,rg.lambdaGcv,rg.GcvCurve->GetY()[rg.kGcv]);
-  SetGraphProps(ggcv,kRed,kRed,kOpenCircle,2);
+  SetGraphProps(ggcv,kRed,kNone,kRed,kOpenCircle,2);
   ggcv->SetLineWidth(2);
   ggcv->Draw("psame");
 
@@ -98,7 +98,7 @@ void ShawExample()
   UnfoldingResult cg = uu.UnfoldPCGLS(nIterPCGLS,LMatrixType, "",gsvd);
   DrawObject(cg.XRegHist,"surf");
 
-  SetGraphProps(cg.LCurve,kRed,kRed,kFullCircle,1.2);
+  SetGraphProps(cg.LCurve, kRed, kNone, kRed, kFullCircle,1.0);
   DrawObject(cg.LCurve, "alp");
   TLatex ltx;
   ltx.SetTextColor(kRed);
@@ -107,12 +107,16 @@ void ShawExample()
     double y = cg.LCurve->GetY()[k];
     ltx.DrawLatex(x, y, Form("%d", k+1)); 
   }
+
+  SetGraphProps(cg.GcvCurve,kMagenta+1,kNone,kMagenta+1,kFullCircle);
+  DrawObject(cg.GcvCurve, "alp");
+
   // DrawObject(&cg.F,"surf");
   // return;
   TGraphTime* anim1 = Animation(cg.XRegHist, statObjs, "pl", 200 /*ms*/, 
-				kRed, kOpenCircle);
+				kRed, kOpenCircle, 1.0, 0, -1, 1, 4.5);
   DrawObject(anim1, "1", "PCGLS", cList, 700, 500);
-  
+
   // Richardson-Lucy algorithm ---------------------------------------
   // -----------------------------------------------------------------
   int nIterRL = 500;
@@ -125,7 +129,7 @@ void ShawExample()
   SetGraphProps(rl.LCurve,kRed+2,kRed+2,kFullCircle,0.5);
   DrawObject(rl.LCurve, "alp", "", cList);
   TGraphTime* anim2 = Animation(rl.XRegHist, statObjs, "pl", 0,
-				kRed+2,kFullCircle);
+				kRed+2,kFullCircle, 1, 0, 0, 1, 4.);
   DrawObject(anim2, "2", "Richardson-Lucy", cList, 700, 500);
   
   // SVD method (A. Hocker) ------------------------------------------

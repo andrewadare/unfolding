@@ -1,3 +1,4 @@
+bool pdf = false; // Print canvases to pdf
 int m = 100, n = 25;
 double x1 = 0., x2 = 5.;
 
@@ -213,7 +214,7 @@ void ConvolutionExample()
   gPad->SetLogy();
   gPad->SetName("conv_sigma");
 
-  if (1)
+  if (pdf)
     PrintPDFs(cList, "./outputs");
 
 }

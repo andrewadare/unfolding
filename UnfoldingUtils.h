@@ -5,6 +5,8 @@ class TH1;
 class TH1D;
 class TH2;
 class TH2D;
+class TH3;
+class TH3D;
 class TString;
 class TGraph;
 class TCanvas;
@@ -90,6 +92,7 @@ class GSVDResult        // Output from GSVDAnalysis().
   TMatrixD Ap;           // A^#: regularized inverse of A (n x m)
   TMatrixD covw;         // Covariance matrix of wreg Ap * Ap' (n x n)
   TMatrixD covx;         // xini * covw * xini
+  TMatrixD covb;         // Either fMatb or I (m x m)
   TVectorD b;            // Measured RHS vector used (m)
   TVectorD bInc;         // Incompatible b component (I-UU')b (m x m)
   TVectorD breg;         // Refolded solution
@@ -121,6 +124,9 @@ struct UnfoldingResult
   // Covariance matrices of w and x (for single best solution)
   TMatrixD wCov;
   TMatrixD xCov;
+
+  TH3D* hwCov;
+  TH3D* hxCov;
 
   TH2D* WRegHist;
   TH2D* XRegHist;
@@ -162,6 +168,10 @@ class UnfoldingUtils
 		 TString name, TString title="");  
   TH2D* Matrix2Hist(TMatrixD& A, TString hName,
 		    double x1, double x2, double y1, double y2);
+  TH2D* Matrix2Hist(TMatrixD& A, TString hName, 
+		    double xbins[], double ybins[]);
+  TH2D* Matrix2Hist(TMatrixD& A, TMatrixD& errA, TString hName, 
+		    double xbins[], double ybins[]);
   TH1D* XHist(TVectorD& x, TString base, int k, double xMin, 
 	      double xMax, double normto, TString opt="");
   TH2D* BandedDiagonalMatrix(TH1* hDpt, 

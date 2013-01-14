@@ -100,17 +100,17 @@ void RUExample()
   DrawObject(rg.WRegHist, "surf");
   DrawObject(rg.XRegHist, "surf");
   DrawObject(rg.GcvCurve, "alp");
-  SetGraphProps(rg.GcvCurve,kMagenta+2,kMagenta+2,kFullCircle,0.5);
+  SetGraphProps(rg.GcvCurve,kMagenta+2,kNone,kMagenta+2,kFullCircle,0.5);
   lt.DrawLatex(0.2, 0.8, Form("#lambda_{min} = %g at k = %d", 
 			      rg.lambdaGcv, rg.kGcv));
   TGraph* ggcv = new TGraph(1); 
   ggcv->SetPoint(0,rg.lambdaGcv,rg.GcvCurve->GetY()[rg.kGcv]);
-  SetGraphProps(ggcv,kRed,kRed,kOpenCircle,2);
+  SetGraphProps(ggcv,kRed,kNone,kRed,kOpenCircle,2);
   ggcv->SetLineWidth(2);
   ggcv->Draw("psame");
   
   DrawObject(rg.LCurve, "alp");
-  SetGraphProps(rg.LCurve,kBlue,kBlue,kFullCircle,0.5);
+  SetGraphProps(rg.LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
 
   // Only works for square problems
   // // SVD algorithm ---------------------------------------------------
@@ -139,7 +139,7 @@ void RUExample()
   cg.XRegHist->Scale(double(nx)/(xt2-xt1));
   DrawObject(cs.XRegHist,"surf");
   DrawObject(cg.LCurve,"alp");
-  SetGraphProps(cg.LCurve,kBlue,kBlue,kFullCircle,0.5);
+  SetGraphProps(cg.LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
   hCG = cg.XRegHist->ProjectionX(Form("cg%d",5),5,5);
   
   // Richardson-Lucy algorithm ---------------------------------------
@@ -187,7 +187,7 @@ void RUExample()
   DrawObject(hAprob,"colz");
 
     // Covariance matrices
-  if (1) {
+  if (0) {
     // // Regularization covariance from SVD method
     // TH2D* hXcov = (TH2D*)gsvdHists->FindObject("hXcov1");
     // DrawObject(hXcov, "colz");
@@ -215,10 +215,12 @@ void RUExample()
   statObjs->Add(datatrue);
   statObjs->Add(data);
 
-  TGraphTime* aRL = Animation(rl.XRegHist, statObjs, "ep", 100, kRed+2);
-  TGraphTime* aCG = Animation(cg.XRegHist, statObjs, "ep", 100, kRed);
+  TGraphTime* aRL = Animation(rl.XRegHist, statObjs, "ep", 100, kRed+2, kFullCircle,1.,
+			      -10.,0,10,5000);
+  TGraphTime* aCG = Animation(cg.XRegHist, statObjs, "ep", 100, kRed, kFullCircle,1.,
+			      -10.,0,10,5000);
 
-  if (0) {
+  if (1) {
     DrawObject(aRL, "2", "Richardson-Lucy", cList, 700, 500);
     DrawObject(aCG, "2", "Conjugate Gradient for Least Squares", cList, 700, 500);
   }
