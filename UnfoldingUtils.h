@@ -91,7 +91,8 @@ class GSVDResult        // Output from GSVDAnalysis().
   TMatrixD A;            // Coefficient matrix used (m x n)
   TMatrixD Ap;           // A^#: regularized inverse of A (n x m)
   TMatrixD covw;         // Covariance matrix of wreg Ap * Ap' (n x n)
-  TMatrixD covx;         // xini * covw * xini
+  TMatrixD covx;         // xini * covw * xini (n x n)
+  TMatrixD covxInv;      // Hocker eq. 53 (n x n)
   TMatrixD covb;         // Either fMatb or I (m x m)
   TVectorD b;            // Measured RHS vector used (m)
   TVectorD bInc;         // Incompatible b component (I-UU')b (m x m)
@@ -144,6 +145,11 @@ struct UnfoldingResult
   int kGcv;
   TH1D* hGcv; // Best unfolding result (according to GCV)
 
+  // Mean of global correlation coefficients
+  TGraph* RhoCurve;
+  double lambdaRho;
+  int kRho;
+  TH1D* hRho; // Best unfolding result (according to GCV)
 };
 
 class UnfoldingUtils 
@@ -196,10 +202,11 @@ class UnfoldingUtils
   void ReverseVector(TVectorD& v);
   void SwapColumns(TMatrixD &A, int col1, int col2);
   void SwapElements(TVectorD& v, int j1, int j2);
-
   void NormalizeXSum(TH2* hA, TH1* hN=0); // Modifies hA in-place
   TH2* TH2Product(TH2* hA, TH2* hB, TString name);
   TH2D* TH2Sub(TH2* h, int bx1, int bx2, int by1, int by2, TString name);
+
+  TMatrixD RegularizedInverseResponse(GSVDResult* gsvd, double lambda); // A^#
   TMatrixD MoorePenroseInverse(TMatrixD& A, double tol = 1e-15); // Uses SVD
   TMatrixD Null(TMatrixD& A); // Columns form a basis for the null space of A
   int Rank(TMatrixD& A); // Uses SVD

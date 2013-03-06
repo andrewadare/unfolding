@@ -447,6 +447,7 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   // Cov(x)_ik = xini_i Cov(w)_ik xini_k 
   gsvd->covw.ResizeTo(n,n);
   gsvd->covx.ResizeTo(n,n);
+  gsvd->covxInv.ResizeTo(n,n);
 
   TMatrixD B(fMatB);
   if (opt.Contains("~")) 
@@ -454,6 +455,7 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   gsvd->covb.ResizeTo(m,m);
   gsvd->covb = B;
 
+  // Compute cov(x)
   TMatrixD tmp(B, TMatrixD::kMultTranspose, gsvd->Ap);
   gsvd->covw = gsvd->Ap * tmp;
   for (int i=0; i<n; i++) {
@@ -462,8 +464,23 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
     }
   }
 
+  // Compute cov(x)^-1 (without using cov(x), see Hocker eq. 53)
+  double AAjk = 0;
+  for (int j=0; j<n; j++) {
+    for (int k=0; k<n; k++) {
+      AAjk = 0;
+      for (int i=0; i<n; i++) {
+	AAjk += A(i,j)*A(i,k);
+      }
+      if (fVecXini(j)==0 || fVecXini(k)==0)
+	gsvd->covxInv(j,k) = 0;
+      else
+	gsvd->covxInv(j,k) = AAjk/fVecXini(j)/fVecXini(k);
+    }
+  }
+
   TVectorD regc = ElemMult(f,c);
-  TVectorD wreg = X*regc;
+   TVectorD wreg = X*regc;
   TVectorD xreg = ElemMult(fVecXini, wreg);
 
   // Save to output for parameter optimization analysis
@@ -931,7 +948,6 @@ UnfoldingUtils::UnfoldChiSqMin(TVectorD& regWts, TString opt)
   if (opt.Contains("~"))
     fTilde = true;
   
-  ////////////////////
   double kbins[nRegWts+1], xbins[fN+1];
   for (int j=0; j<=fN; j++) {
     xbins[j] = fTrueX1 + j*(fTrueX2-fTrueX1)/fN;
@@ -950,19 +966,12 @@ UnfoldingUtils::UnfoldChiSqMin(TVectorD& regWts, TString opt)
   result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
   result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
   result.XRegHist->SetTitle("GSVD solutions: x_{#lambda};x;#lambda");
-  ////////////////////
-
-  // result.XRegHist = new TH2D(Form("hChsq%d",id), Form("hChsq%d",id),
-  // 			     fN, fTrueX1, fTrueX2, nRegWts, 0, nRegWts);
-  // result.XRegHist->GetXaxis()->CenterTitle();
-  // result.XRegHist->GetYaxis()->CenterTitle();
-  // result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
-  // result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
   
   result.LCurve = new TGraph();
   result.LCurve->SetTitle("TMinuit L-Curve;Unregulated total #chi^{2};total curvature");
 
   // Set up the chi^2 minimizer
+  //  TFitterMinuit* min = new FitterMinuit();
   ROOT::Math::Minimizer* min = 
     ROOT::Math::Factory::CreateMinimizer("Minuit2", "Migrad");
   min->SetMaxFunctionCalls(1000000);
@@ -1019,6 +1028,35 @@ UnfoldingUtils::UnfoldChiSqMin(TVectorD& regWts, TString opt)
   return result;
 }
 
+TMatrixD
+UnfoldingUtils::RegularizedInverseResponse(GSVDResult* gsvd, double lambda)
+{
+  // Compute A^# from GSVD components as X * F_lambda * C^dagger * U'
+  // where F is the diagonal matrix of filter factors for this lambda value.
+  int n  = gsvd->n;
+  int m  = gsvd->m; 
+  int p  = gsvd->p;
+  TMatrixD FCd(n,n);      // Filter factor matrix * pseudoinverse(diag(alpha))
+  TMatrixD Ap(n,m);       // Regularized inverse A^#
+  TMatrixD UT(TMatrixD::kTransposed, gsvd->U);  
+
+  // Create Tikhonov filter factors for this lambda
+  TVectorD f(n);
+  for (int i=0; i<n; i++) {
+    if (i >= n-p) {
+      double g2 = gsvd->gamma(i)*gsvd->gamma(i); 
+      f(i) = g2 / (g2 + lambda*lambda);
+    }
+    else
+      f(i) = 1.0;
+  }
+  for (int i=0; i<fN; i++) {
+    FCd(i,i) = (gsvd->alpha(i) > 0.) ? f(i)/gsvd->alpha(i) : 0.;
+  }
+  Ap = gsvd->X * FCd * UT; 
+  return Ap;
+}
+
 UnfoldingResult
 UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
 				   TVectorD& lambda, 
@@ -1038,6 +1076,7 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
 
   result.LCurve = new TGraph(nk);
   result.GcvCurve = new TGraph(nk);
+  result.RhoCurve = new TGraph(nk);
   result.hwCov = new TH3D(Form("hwCov_gsvd_%d", id),
 			  Form("hwCov_gsvd_%d", id),
 			  fN,fTrueX1,fTrueX2,
@@ -1051,11 +1090,13 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
 
   result.lambdaGcv = 0;
   double gcvMin = 1e99;
+  result.lambdaRho = 0;
+  double rhoMin = 1e99;
 
   // Stuff for computing covariance
   TMatrixD B(gsvd->covb); // Error matrix of b
   TMatrixD FCd(n,n);      // Filter factor matrix * pseudoinverse(diag(alpha))
-  TMatrixD Ap(n,m);       // Regularized inverse A^#
+  // TMatrixD Ap(n,m);       // Regularized inverse A^#
   TMatrixD UT(TMatrixD::kTransposed, gsvd->U);  
 
   // Scan over lambda values, generate nk solutions
@@ -1078,19 +1119,21 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
     TVectorD wreg = gsvd->X*regc;
     TVectorD xreg = ElemMult(fVecXini, wreg);
 
-    // Covariance matrices:
+    // Regularized Inverse A^# for this lambda
+    TMatrixD Ap = RegularizedInverseResponse(gsvd, lambda(k));
+
+    // Covariance matrices for this lambda:
     // Cov(w) = Ap*B*Ap'
     // Cov(x)_ik = xini_i Cov(w)_ik xini_k
-    for (int i=0; i<fN; i++) {
-      FCd(i,i) = (gsvd->alpha(i) > 0.) ? f(i)/gsvd->alpha(i) : 0.;
-    }
-    Ap = gsvd->X * FCd * UT; 
     TMatrixD covw = Ap * TMatrixD(B, TMatrixD::kMultTranspose, Ap);
     TMatrixD covx(covw);
+
+    // For each lambda, cov(w) and cov(x) are added to TH3s.
     for (int i=0; i<n; i++) {
       for (int j=0; j<n; j++) {
 	double cw = covw(i,j);
 	double cx = fVecXini(i) * cw * fVecXini(j);
+	covx(i,j) = cx;
 	result.hwCov->SetBinContent(i+1,j+1,k+1,cw);
 	result.hxCov->SetBinContent(i+1,j+1,k+1,cx);
 	if (i==j) WRegErr(j,k) = TMath::Sqrt(cw); 
@@ -1123,23 +1166,77 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
     TMatrixD Up = gsvd->U.GetSub(0,m-1,n-p,n-1); // m x n --> m x p
     TVectorD r = Up * vec.GetSub(n-p, n-1) - gsvd->bInc;
     double rnorm = TMath::Sqrt(r*r);
-    
+    double rho = 0;
     double gcv = rnorm / (m - f.Sum());
 
+    // Compute mean global correlation coefficients (V. Blobel)
+    //    double rho_j = 0; 
+    double rhoMean = 0;
+    double rhoj2 = 0;
+    TMatrixD covxInv = MoorePenroseInverse(covx);
+    
+    for (int j=0; j<n; j++) {
+      double vxreg = covx(j,j);
+      double vxinv = covxInv(j,j);
+      //      double vxinv = (gsvd->covxInv)(j,j);
+      double prod = vxreg*vxinv;
+
+      // if (prod == 0 || prod < 1.) 
+      // 	rho_j = 0;
+      // else
+      // 	rho_j = TMath::Sqrt(1 - 1./prod);
+
+      // rhoMean += rho_j / n;
+
+      if (prod == 0) 
+      	rhoj2 = 0;
+      else
+      	rhoj2 = 1 - 1./prod;
+
+      rhoMean += rhoj2 / n;
+    }
+    rhoMean = TMath::Sqrt(rhoMean);
+    rho = rhoMean;
+
+    result.RhoCurve->SetPoint(k, lambda(k), rhoMean);
     result.LCurve->SetPoint(k, rnorm, lxnorm);
     result.GcvCurve->SetPoint(k, lambda(k), gcv);
+
     if (gcv < gcvMin) {
       gcvMin = gcv;
       result.lambdaGcv = lambda(k);
       result.kGcv = k;
     }
+    if (rho < rhoMin) {
+      rhoMin = rho;
+      result.lambdaRho = lambda(k);
+      result.kRho = k;
+    }
 
   }
 
   int kg = result.kGcv+1;
+  result.RhoCurve->SetName("gsvd_rho");
+  result.RhoCurve->SetTitle("GSVD mean global correlation coefficients;"
+			    "#lambda;#LT#rho#GT");
   result.LCurve->SetTitle("GSVD L-Curve;||Ax_{#lambda}-b||_{2};||Lx_{#lambda}||_{2}");
   result.GcvCurve->SetNameTitle("gsvd_gcv","GSVD cross-validation curve;"
 				"#lambda;G(#lambda)");
+  result.RhoCurve->GetXaxis()->CenterTitle();
+  result.RhoCurve->GetYaxis()->CenterTitle();
+  result.RhoCurve->GetXaxis()->SetTitleOffset(1.3);
+  result.RhoCurve->GetYaxis()->SetTitleOffset(1.3);
+
+  result.LCurve->GetXaxis()->CenterTitle();
+  result.LCurve->GetYaxis()->CenterTitle();
+  result.LCurve->GetXaxis()->SetTitleOffset(1.3);
+  result.LCurve->GetYaxis()->SetTitleOffset(1.3);
+
+  result.GcvCurve->GetXaxis()->CenterTitle();
+  result.GcvCurve->GetYaxis()->CenterTitle();
+  result.GcvCurve->GetXaxis()->SetTitleOffset(1.3);
+  result.GcvCurve->GetYaxis()->SetTitleOffset(1.3);
+
   double kbins[nk+1], xbins[fN+1];
   for (int j=0; j<=fN; j++) {
     xbins[j] = fTrueX1 + j*(fTrueX2-fTrueX1)/fN;
