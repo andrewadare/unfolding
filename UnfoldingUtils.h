@@ -131,18 +131,24 @@ struct UnfoldingResult
 
   TH2D* WRegHist;
   TH2D* XRegHist;
-  
-  // Parametric curve of ||Lx||_2 vs. ||Ax-b||_2.
-  TGraph* LCurve;
+
+
+  TGraph* LCurve;  // Parametric curve of ||Lx||_2 vs. ||Ax-b||_2.
+  TMatrixD F; // filter factors vs. iteration number
+
+  // Summed Tikhonov Filter factors vs. lambda
+  // Optimal point is smallest lambda where 
+  // sum(f_i) >= # significant GSVD U'b coeffs. 
+  TGraph* FilterSum;
+  double lambdaStf;
+  int kStf; // Optimal point index on curve
+  TH1D* hStf;
 
   // Curvature of L-Curve
   TGraph* LCurvature;
-
   double lambdaLcv;
-  int kLcv;
-  TH1D* hLbest; // Best unfolding result (according to L-Curve)
-
-  TMatrixD F; // filter factors vs. iteration number
+  int kLcv;     // Optimal point index on curve
+  TH1D* hLcv; // Best unfolding result (according to L-Curve)
 
   // Generalized cross-validation curve,
   // and best lambda & iteration / index

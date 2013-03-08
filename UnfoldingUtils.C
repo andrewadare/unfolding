@@ -1074,9 +1074,11 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   result.WReg.ResizeTo(n, nk);
   result.XReg.ResizeTo(n, nk);
 
-  result.LCurve = new TGraph(nk);
-  result.GcvCurve = new TGraph(nk);
-  result.RhoCurve = new TGraph(nk);
+  result.LCurve    = new TGraph(nk);
+  result.GcvCurve  = new TGraph(nk);
+  result.RhoCurve  = new TGraph(nk);
+  result.FilterSum = new TGraph(nk);
+
   result.hwCov = new TH3D(Form("hwCov_gsvd_%d", id),
 			  Form("hwCov_gsvd_%d", id),
 			  fN,fTrueX1,fTrueX2,
@@ -1093,6 +1095,20 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   result.lambdaRho = 0;
   double rhoMin = 1e99;
   result.lambdaLcv = 0;
+  result.kStf = 0;
+  result.lambdaStf = 0;
+
+  // Compute the number of significant GSVD coefficients
+  int nSignificantGSVDCoeffs = 0;
+  double errThreshold = 2*GetbErrMean();
+  for (int i=0; i<fN; i++) {
+    TH1D* h = gsvd->UTbAbs;
+    if (h->GetBinContent(i+1) > errThreshold)
+      nSignificantGSVDCoeffs++;
+    else
+      break;
+  }
+  Printf("# coeffs > %f = %d", errThreshold, nSignificantGSVDCoeffs);
 
   // Stuff for computing covariance
   TMatrixD B(gsvd->covb); // Error matrix of b
@@ -1168,7 +1184,8 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
     TVectorD r = Up * vec.GetSub(n-p, n-1) - gsvd->bInc;
     double rnorm = TMath::Sqrt(r*r);
     double rho = 0;
-    double gcv = rnorm / (m - f.Sum());
+    double fsum = f.Sum();
+    double gcv = rnorm / (m - fsum);
 
     // Compute mean global correlation coefficients (V. Blobel)
     //    double rho_j = 0; 
@@ -1199,19 +1216,19 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
     rhoMean = TMath::Sqrt(rhoMean);
     rho = rhoMean;
 
-    result.RhoCurve->SetPoint(k, lambda(k), rhoMean);
     result.LCurve->SetPoint(k, rnorm, lxnorm);
     result.GcvCurve->SetPoint(k, lambda(k), gcv);
+    result.RhoCurve->SetPoint(k, lambda(k), rhoMean);
+    result.FilterSum->SetPoint(k, lambda(k), fsum);
 
+    if (fsum > nSignificantGSVDCoeffs) {
+      result.lambdaStf = lambda(k);
+      result.kStf = k;
+    }
     if (gcv < gcvMin) {
       gcvMin = gcv;
       result.lambdaGcv = lambda(k);
       result.kGcv = k;
-    }
-    if (rho < rhoMin) {
-      rhoMin = rho;
-      result.lambdaRho = lambda(k);
-      result.kRho = k;
     }
     if (rho < rhoMin) {
       rhoMin = rho;
@@ -1278,8 +1295,23 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
   result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
   result.XRegHist->SetTitle("GSVD solutions: x_{#lambda};x;#lambda");
+
+  int kr = result.kRho+1;
+  int kl = result.kLcv+1;
+  int ks = result.kStf+1;
+
   result.hGcv = 
-    result.XRegHist->ProjectionX(Form("gsvd_%d_bin%d",id,kg),kg,kg);
+    result.XRegHist->ProjectionX(Form("gsvd_%d_gcv_bin%d",id,kg),kg,kg);
+
+  result.hRho = 
+    result.XRegHist->ProjectionX(Form("gsvd_%d_rho_bin%d",id,kr),kr,kr);
+
+  result.hLcv = 
+    result.XRegHist->ProjectionX(Form("gsvd_%d_lcv_bin%d",id,kl),kl,kl);
+
+  result.hStf = 
+    result.XRegHist->ProjectionX(Form("gsvd_%d_stf_bin%d",id,ks),ks,ks);
+
   return result;
 }
 
