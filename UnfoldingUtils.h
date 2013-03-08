@@ -134,6 +134,12 @@ struct UnfoldingResult
   
   // Parametric curve of ||Lx||_2 vs. ||Ax-b||_2.
   TGraph* LCurve;
+
+  // Curvature of L-Curve
+  TGraph* LCurvature;
+
+  double lambdaLcv;
+  int kLcv;
   TH1D* hLbest; // Best unfolding result (according to L-Curve)
 
   TMatrixD F; // filter factors vs. iteration number
@@ -206,6 +212,7 @@ class UnfoldingUtils
   TH2* TH2Product(TH2* hA, TH2* hB, TString name);
   TH2D* TH2Sub(TH2* h, int bx1, int bx2, int by1, int by2, TString name);
 
+  TGraph* LogCurvature(TGraph* g, const TVectorD& tVec, int& kMax); // log curvature of parametric curve g(t). kMax is point index of greatest curvature.
   TMatrixD RegularizedInverseResponse(GSVDResult* gsvd, double lambda); // A^#
   TMatrixD MoorePenroseInverse(TMatrixD& A, double tol = 1e-15); // Uses SVD
   TMatrixD Null(TMatrixD& A); // Columns form a basis for the null space of A

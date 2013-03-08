@@ -1092,6 +1092,7 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   double gcvMin = 1e99;
   result.lambdaRho = 0;
   double rhoMin = 1e99;
+  result.lambdaLcv = 0;
 
   // Stuff for computing covariance
   TMatrixD B(gsvd->covb); // Error matrix of b
@@ -1212,14 +1213,26 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
       result.lambdaRho = lambda(k);
       result.kRho = k;
     }
+    if (rho < rhoMin) {
+      rhoMin = rho;
+      result.lambdaRho = lambda(k);
+      result.kRho = k;
+    }
 
   }
+
+  // Assign result.Lcurvature and result.kLcv
+  result.LCurvature = LogCurvature(result.LCurve, lambda, result.kLcv);
+  result.lambdaLcv = lambda(result.kLcv);
 
   int kg = result.kGcv+1;
   result.RhoCurve->SetName("gsvd_rho");
   result.RhoCurve->SetTitle("GSVD mean global correlation coefficients;"
 			    "#lambda;#LT#rho#GT");
   result.LCurve->SetTitle("GSVD L-Curve;||Ax_{#lambda}-b||_{2};||Lx_{#lambda}||_{2}");
+
+  result.LCurvature->SetName("gsvd_lcc");
+  result.LCurvature->SetTitle("GSVD L-Curve log curvature;#lambda;log curvature");
   result.GcvCurve->SetNameTitle("gsvd_gcv","GSVD cross-validation curve;"
 				"#lambda;G(#lambda)");
   result.RhoCurve->GetXaxis()->CenterTitle();
@@ -1231,6 +1244,11 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   result.LCurve->GetYaxis()->CenterTitle();
   result.LCurve->GetXaxis()->SetTitleOffset(1.3);
   result.LCurve->GetYaxis()->SetTitleOffset(1.3);
+
+  result.LCurvature->GetXaxis()->CenterTitle();
+  result.LCurvature->GetYaxis()->CenterTitle();
+  result.LCurvature->GetXaxis()->SetTitleOffset(1.3);
+  result.LCurvature->GetYaxis()->SetTitleOffset(1.3);
 
   result.GcvCurve->GetXaxis()->CenterTitle();
   result.GcvCurve->GetYaxis()->CenterTitle();
@@ -1902,6 +1920,69 @@ UnfoldingUtils::MoorePenroseInverse(TMatrixD& A, double tol)
   Ainv.ResizeTo(n,m);
 
   return Ainv;
+}
+
+TGraph*
+UnfoldingUtils::LogCurvature(TGraph* g, const TVectorD& tVec, int& kMax)
+{
+  // Compute signed log curvature of the parametric curve
+  // g(t) = (a(t), b(t))
+  // where (x(t), y(t)) = (log(a(t)), log(b(t))).
+  // Curvature = (x'y'' - y'x'') / (x'^2 + y'^2)^1.5
+  // kMax is the index of the maximum point.
+
+  int n = g->GetN();
+  TGraph* gk = new TGraph(n-2);
+
+  TVectorD x(n);
+  TVectorD y(n);
+  for (int i=0; i<n; i++) {
+    x(i) = TMath::Log10(g->GetX()[i]);
+    y(i) = TMath::Log10(g->GetY()[i]);
+  }
+
+  // Differentiation operators
+  // TMatrixD D1 = LMatrix(n,k1DerivNoBC);
+  // TMatrixD D2 = LMatrix(n,k2DerivNoBC);
+
+  // // Approximate derivatives
+  // TVectorD x1 = D1*x;
+  // TVectorD x2 = D2*x;
+  // TVectorD y1 = D1*y;
+  // TVectorD y2 = D2*y;
+
+  TVectorD x1(n-1);
+  TVectorD x2(n-2);
+  TVectorD y1(n-1);
+  TVectorD y2(n-2);
+
+  // First derivatives
+  for (int i=0; i<n-1; i++) {
+    x1(i) = (x(i+1) - x(i)) / (tVec(i+1) - tVec(i)); 
+    y1(i) = (y(i+1) - y(i)) / (tVec(i+1) - tVec(i)); 
+  }
+  // Second derivatives
+  for (int i=0; i<n-2; i++) {
+    x2(i) = (x1(i+1) - x1(i)) / (tVec(i+1) - tVec(i)); 
+    y2(i) = (y1(i+1) - y1(i)) / (tVec(i+1) - tVec(i)); 
+  }
+
+  // Compute curvature vs. t
+  double cmax = -1e99;
+  for (int i=0; i<n-2; i++) {
+    double numer = x1(i)*y2(i) - x2(i)*y1(i);
+    double denom = TMath::Power(x1(i)*x1(i) + y1(i)*y1(i), 1.5);
+    double c = numer / denom;
+    gk->SetPoint(i, tVec(i), c);
+
+    // Find maximum curvature and its array position
+    if (c>cmax) {
+      cmax = c;
+      kMax = i;
+    }
+
+  }
+  return gk;
 }
 
 TVectorD
