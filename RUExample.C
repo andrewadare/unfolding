@@ -115,12 +115,6 @@ void RUExample()
   gPad->SetLogx(); gPad->SetLogy();
   SetGraphProps(rg.LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
 
-  // Only works for square problems
-  // // SVD algorithm ---------------------------------------------------
-  // // -----------------------------------------------------------------
-  // double lambda = 50.0;
-  // hSVD = uu.UnfoldSVD(lambda, gsvdHists, "BC0, ~");
-
   // Chi squared minimization ----------------------------------------
   // -----------------------------------------------------------------
   TVectorD regWts(20);  regWts(0) = 0.;
