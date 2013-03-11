@@ -59,16 +59,15 @@ void ShawExample()
   // GSVD analysis ---------------------------------------------------
   // -----------------------------------------------------------------
   TMatrixD L = uu.LMatrix(n, UnfoldingUtils::k2DerivBC0);
-  GSVDResult* gsvd = uu.GSVDAnalysis(L, 0.77);
+  GSVDResult* gsvd = uu.GSVDAnalysis(L, 0.8);
   DrawObject(gsvd->UHist, "surf", "shaw_gsvd_u", cList);
 
   uu.DrawGSVDPlot(gsvd, 1e-5, 1e2);
   TLine eLine;
   eLine.DrawLine(0, deltab, n, deltab);
-
   gPad->SetTitle("shaw_gsvd_ana");
   cList->Add((TCanvas*)gPad);
-  //  return;
+
   DrawObject(hMeas, "pl", "shaw_test_problem", cList);
   hMeasI->Draw("plsame");
   hTrue->Draw("plsame");
@@ -76,10 +75,10 @@ void ShawExample()
 
   // General-form Tikhonov algorithm using GSVD ----------------------
   // -----------------------------------------------------------------
-  int nLambda = 50;
+  int nLambda = 100;
   TVectorD regVector(nLambda);
   for (int k=0; k<nLambda; k++)
-    regVector(k) = 0.01*TMath::Exp(0.15*k); 
+    regVector(k) = 0.005*TMath::Exp(0.1*k); 
 
   UnfoldingResult rg = uu.UnfoldTikhonovGSVD(gsvd, regVector);
   DrawObject(rg.XRegHist, "surf", "shaw_gsvd_solutions", cList);
@@ -88,7 +87,7 @@ void ShawExample()
   SetGraphProps(rg.GcvCurve,kMagenta+2,kNone,kMagenta+2,kFullCircle,0.5);
   DrawObject(rg.GcvCurve, "alp", "shaw_gsvd_gcv", cList);
   gPad->SetLogx();
-  lt.DrawLatex(0.2, 0.8, Form("#lambda_{min} = %g at k = %d", 
+  lt.DrawLatex(0.2, 0.8, Form("#lambda_{min} = %.2f at k = %d", 
 			      rg.lambdaGcv, rg.kGcv));
   TGraph* ggcv = new TGraph(1);
   ggcv->SetPoint(0,rg.lambdaGcv,rg.GcvCurve->GetY()[rg.kGcv]);
@@ -96,10 +95,27 @@ void ShawExample()
   ggcv->SetLineWidth(2);
   ggcv->Draw("psame");
 
+  TGraph* gcvZoom = (TGraph*)rg.GcvCurve->Clone();
+  TPad* inset = new TPad("inset", "inset", 0.2, 0.25, 0.6, 0.7, kNone, 1, 0);
+  inset->SetFrameBorderMode(0);
+  inset->Draw();
+  inset->cd();
+  TH1F* hfz = inset->DrawFrame(0.005, 0.0092, 1.35, 0.0096);
+  hfz->GetXaxis()->SetNdivisions(6,2,0);
+  hfz->GetYaxis()->SetNdivisions(5,2,0);
+  hfz->GetXaxis()->SetLabelSize(0.08);
+  hfz->GetYaxis()->SetLabelSize(0.08);
+  inset->SetLeftMargin(0.25);
+  inset->SetBottomMargin(0.2);
+  inset->Update();
+
+  gcvZoom->Draw("lp same");
+  ggcv->Draw("p same");
+
   SetGraphProps(rg.LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
-  DrawObject(rg.LCurve, "alp", "shaw_gsvd_lcurve", cList);
-  // rg.LCurve->GetXaxis()->SetRangeUser(0.09, 5);
-  // rg.LCurve->GetYaxis()->SetRangeUser(0.01, 200);
+  DrawObject(rg.LCurve, "alp", "shaw_gsvd_lcurve", cList, 500, 500);
+  rg.LCurve->GetXaxis()->SetRangeUser(0.2, 2);
+  rg.LCurve->GetYaxis()->SetRangeUser(0.05, 11);
   gPad->SetLogx();
   gPad->SetLogy();
 
@@ -116,29 +132,23 @@ void ShawExample()
 	       Form("1. #lambda_{GCV} = %.2f at k = %d", 
   			      rg.lambdaGcv, rg.kGcv));
   ltx.DrawLatex(rg.LCurve->GetX()[rg.kLcv],rg.LCurve->GetY()[rg.kLcv],
-	       Form("2. #lambda_{max log. curvature} = %.2f at k = %d", 
+	       Form("2. #lambda_{max} = %.2f at k = %d", 
   			      rg.lambdaLcv, rg.kLcv));
   ltx.DrawLatex(rg.LCurve->GetX()[rg.kStf],rg.LCurve->GetY()[rg.kStf],
 		Form("3. #lambda_{stf} = %.2f at k = %d", 
 		     rg.lambdaStf, rg.kStf));
 
-  ltx.DrawLatex(rg.LCurve->GetX()[rg.kRho],rg.LCurve->GetY()[rg.kRho],
-	       Form("4. #lambda_{#rho} = %.2f at k = %d", 
-  			      rg.lambdaRho, rg.kRho));
-  
-
-
   SetGraphProps(rg.LCurvature,kBlue,kNone,kBlue,kFullCircle,0.5);
   DrawObject(rg.LCurvature, "alp", "gsvd_lcurvature", cList);
   gPad->SetLogx();
-  lt.DrawLatex(0.2, 0.8, Form("#lambda_{max curvature} = %.1f at k = %d", 
+  lt.DrawLatex(0.2, 0.8, Form("#lambda_{max curvature} = %.2f at k = %d", 
   			      rg.lambdaLcv, rg.kLcv));
 
 
   SetGraphProps(rg.FilterSum,kMagenta+2,kNone,kMagenta+2,kFullCircle,0.5);
   DrawObject(rg.FilterSum, "alp", "shaw_gsvd_fsum", cList);
   gPad->SetLogx();
-  lt.DrawLatex(0.2, 0.8, Form("#lambda_{stf} = %g at k = %d", 
+  lt.DrawLatex(0.2, 0.8, Form("#lambda_{stf} = %.2f at k = %d", 
   			      rg.lambdaStf, rg.kStf));
 
   // PCGLS algorithm -------------------------------------------------
@@ -169,53 +179,47 @@ void ShawExample()
 
   // Richardson-Lucy algorithm ---------------------------------------
   // -----------------------------------------------------------------
-  int nIterRL = 500;
-  TH1D* prior = new TH1D("prior", "initial guess",n,0,1);
-  for (int i=1; i<=n; i++) 
-    prior->SetBinContent(i, TMath::Gaus((i-0.5)/n, 0.5, 0.2));
+  int nIterRL = 100;
+  TH1D* prior = 0;
+  bool useGsvdSolutionAsPrior = false;
+  if (useGsvdSolutionAsPrior) {
+    prior = (TH1D*)rg.hStf->Clone("rich_lucy_prior");
+  }
+  else { // Choose a Gaussian prior
+    prior = new TH1D("prior", "initial guess",n,0,1);
+    for (int i=1; i<=n; i++) {
+      double x = (i+0.5)*(uu.GetTrueX2()-uu.GetTrueX1())/n;
+      double mu = 0.5;
+      double sigma = 0.2;
+      double norm = 1. / sigma / TMath::Sqrt(TMath::TwoPi());
+      prior->SetBinContent(i, norm*TMath::Gaus(x, mu, sigma));
+    }
+  }
+
   uu.SetPrior(prior);
   UnfoldingResult rl = uu.UnfoldRichardsonLucy(nIterRL);
   DrawObject(rl.XRegHist, "surf", "shaw_rl_solutions", cList);
 
   SetGraphProps(rl.LCurve,kRed+2,kNone,kRed+2,kFullCircle,0.5);
-  DrawObject(rl.LCurve, "alp", "shaw_lcurve", cList);
+  DrawObject(rl.LCurve, "alp", "shaw_lcurve", cList, 500, 500);
   gPad->SetLogx();
   gPad->SetLogy();
 
+  SetGraphProps(rl.LCurvature,kRed+1,kNone,kRed+1,kFullCircle,0.5);
+  DrawObject(rl.LCurvature, "alp", "shaw_rl_lcurvature", cList);
+  gPad->SetLogx();
+  lt.DrawLatex(0.2, 0.8, Form("#lambda_{max curvature} = %.2f at k = %d", 
+  			      rl.lambdaLcv, rl.kLcv));
+
+
+  statObjs->Add(prior);
   TGraphTime* anim2 = Animation(rl.XRegHist, statObjs, "pl", 0,
 				kRed+2,kFullCircle, 1, 0, 0, 1, 4.);
   DrawObject(anim2, "", "shaw_rl_anim", cList, 700, 500);
-  
-  // SVD method (A. Hocker) ------------------------------------------
+
+
+  // Final plotting  -------------------------------------------------
   // -----------------------------------------------------------------
-  TString svdBC = "BC0,~"; // Favor x=0 at edges (Reflect with "BCR")
-  double lambda = 5.0;
-  hSVD = uu.UnfoldSVD(lambda, genSvdAna, svdBC);
-  if (0) { // Scan lambda regularization values
-    double stepSize = 0.2;
-    for (int i=0; i<50; i++) {
-      lambda = stepSize*i;
-      TH1D* h = uu.UnfoldSVD(lambda, svdResid, svdBC);
-      svdAnim->Add(h);
-    }
-    TGraphTime* an = Animation(svdAnim, statObjs, "pl", 100 /*ms*/);
-    DrawObject(an, "", "SVD", cList, 700, 500);
-  }
-
-  if (0) {
-    TGraph* svdRes = uu.ResidualNorm(svdResid, stepSize);
-    double errNorm = svdRes->GetY()[0] + 2*TMath::Sqrt(n)*deltab;
-    TLine e2Line;
-    DrawObject(svdRes, "ALP");
-    e2Line.DrawLine(0, errNorm, stepSize*svdRes->GetN(), errNorm);
-    //  svdRes->GetYaxis()->SetRangeUser(0., 6);
-  }
-
-  // TH2D* hWcov = (TH2D*)genSvdAna->FindObject("hWcov1");
-  // DrawObject(hWcov, "colz");
-  // TH2D* hXcov = (TH2D*)genSvdAna->FindObject("hXcov1");
-  // DrawObject(hXcov, "colz");
-
   hResp->SetTitle("Response matrix;x_{meas};x_{true}");
   DrawObject(hResp, "colz", "shaw_response_matrix", cList, 550, 500);
   gPad->SetRightMargin(0.15);
@@ -224,7 +228,6 @@ void ShawExample()
   DrawObject(hMeas, "pl", "shaw_solutions_all", cList);
   hMeasI->Draw("plsame");
   hTrue->Draw("plsame");
-  hSVD->Draw("lsame");
   rg.hGcv->Draw("psame");
   cg.hLcv = cg.XRegHist->ProjectionX(Form("cg%d",4),4,4);
   cg.hLcv->Draw("psame");
