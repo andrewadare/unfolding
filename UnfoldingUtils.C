@@ -1252,6 +1252,9 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   result.LCurvature->SetTitle("GSVD L-Curve log curvature;#lambda;log curvature");
   result.GcvCurve->SetNameTitle("gsvd_gcv","GSVD cross-validation curve;"
 				"#lambda;G(#lambda)");
+  result.FilterSum->SetNameTitle("gsvd_fsum","GSVD Tikhonov filter factor sum (= effective NDF);"
+				"#lambda;effective NDF");
+
   result.RhoCurve->GetXaxis()->CenterTitle();
   result.RhoCurve->GetYaxis()->CenterTitle();
   result.RhoCurve->GetXaxis()->SetTitleOffset(1.3);
@@ -1271,6 +1274,11 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   result.GcvCurve->GetYaxis()->CenterTitle();
   result.GcvCurve->GetXaxis()->SetTitleOffset(1.3);
   result.GcvCurve->GetYaxis()->SetTitleOffset(1.3);
+
+  result.FilterSum->GetXaxis()->CenterTitle();
+  result.FilterSum->GetYaxis()->CenterTitle();
+  result.FilterSum->GetXaxis()->SetTitleOffset(1.3);
+  result.FilterSum->GetYaxis()->SetTitleOffset(1.3);
 
   double kbins[nk+1], xbins[fN+1];
   for (int j=0; j<=fN; j++) {
@@ -1514,9 +1522,13 @@ UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations)
   TVectorD bvar(fM); // Variance of meas. data
   for (int i=0; i<fM; i++)
     bvar(i) = fMatB(i,i);
+
+  result.kLcv = 0;
+  TVectorD kIter(nIterations);
   
   for (int k=0; k<nIterations; k++) {
     printf("Richardson-Lucy iteration %d\r", k+1);
+    kIter(k) = k+1;
     
     // R-L result for iteration k
     TVectorD xd = ElemDiv(x, AT1);
@@ -1533,6 +1545,14 @@ UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations)
 
   } // end iteration loop
   cout << endl;
+
+  // Assign result.Lcurvature and result.kLcv
+  result.LCurvature = LogCurvature(result.LCurve, kIter, result.kLcv);
+  result.LCurvature->GetXaxis()->CenterTitle();
+  result.LCurvature->GetYaxis()->CenterTitle();
+  result.LCurvature->GetXaxis()->SetTitleOffset(1.3);
+  result.LCurvature->GetYaxis()->SetTitleOffset(1.3);
+  result.lambdaLcv = result.kLcv; // Here, "lambda" is the iteration.
 
   result.WRegHist = Matrix2Hist(result.WReg, Form("W_RL_%d",id),
 				fTrueX1,fTrueX2,0,nIterations);
