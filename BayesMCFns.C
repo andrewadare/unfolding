@@ -1,0 +1,336 @@
+// *BayesMCFns.C* 
+//
+// Collection of utility functions implementing the methods described
+// in "Fully Bayesian Unfolding" by G. Choudalakis (arXiv:1201.4612v4)
+//
+// Andrew Adare andrew.adare@colorado.edu
+// March 2013
+
+#include "TH1.h"
+#include "TH2.h"
+#include "TF1.h"
+#include "TGraph.h"
+#include "TGraphErrors.h"
+#include "TGraphAsymmErrors.h"
+#include "TVectorD.h"
+#include "TMatrixD.h"
+#include "TMath.h"
+#include "TTree.h"
+#include "TRandom3.h"
+#include <iostream>
+
+struct BayesianCredibilityInterval
+{
+  double u1, u2;
+  double u;  // Calculated as (u1+u2)/2
+  double du; // Calculated as (u2-u1)/2
+};
+
+// Function prototypes
+TGraphAsymmErrors* HyperBox(TH1D* h);
+TTree* SampleUniform(   int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* box);
+TTree* SampleMetropolis(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* box);
+double PoissonLikelihood(TVectorD& b, TVectorD& R);
+double LogPoissonLikelihood(TVectorD& b, TVectorD& R);
+double LogPoisson(double x, double mu);
+double LogGaussian(double x, double mu, double sigma, bool norm);
+double LogFactorial(int n);
+void PrintPercentDone(int i, int N, int k);  // Print i/N (in %) every k%.
+
+TGraphAsymmErrors* 
+HyperBox(TH1D* h) 
+{
+  int Nt = h->GetNbinsX();
+  TGraphAsymmErrors* g = new TGraphAsymmErrors(Nt);
+
+  // Hyperbox boundaries
+  double min,max,mid;
+  for (int t=0; t<Nt; t++) {
+    
+    mid = h->GetBinContent(t+1);
+    min = 1./(t+10) * mid;
+    if (min < 0)
+      min = 0;
+    if (t==0)
+      max = 2*mid;
+    else
+      max = (t+1)*h->GetBinContent(t);
+
+    double ex = h->GetBinWidth(t+1)/2.04;
+    g->SetPoint(t,h->GetBinCenter(t+1), mid);
+    g->SetPointError(t, ex, ex, mid-min, max-mid);
+  }
+  return g;
+}
+
+TTree* 
+SampleUniform(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* box)
+{
+  int Nt = box->GetN();
+  float Tpoint[Nt], logL, L;
+  TRandom3 ran3;
+  TVectorD trialT(Nt);
+  TVectorD trialR(Nt);
+  
+  TTree* ptree = new TTree("ptree", "posterior probability from uniform sampling");
+  for (int t=0; t<Nt; t++) {
+    ptree->Branch(Form("T%d",t), &Tpoint[t], Form("T%d/F",t));  
+  }
+  ptree->Branch("L", &L, "L/F");
+
+  std::cout << Form("Sampling L(D|T)*pi(T) uniformly...") 
+	    << std::endl;
+
+  for (int i=0; i<nSamples; i++) {
+    
+    PrintPercentDone(i, nSamples, 1);
+
+    for (int t=0; t<Nt; t++) {
+      double min = box->GetY()[t] - box->GetEYlow()[t];
+      double max = box->GetY()[t] + box->GetEYhigh()[t];
+      trialT(t) = ran3.Uniform(min, max);
+    }
+
+    trialR = Prt*trialT;
+    logL = (float)LogPoissonLikelihood(D,trialR);
+    L = (logL > -700) ? TMath::Exp(logL) : 0.;
+    
+    for (int t=0; t<Nt; t++) {
+      Tpoint[t] = (float)trialT(t);
+    }
+    ptree->Fill();
+  }
+    
+  Printf("Filled tree with %lld entries.",ptree->GetEntries());
+  return ptree;
+}
+
+TTree* 
+SampleMetropolis(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* box)
+{
+  int Nt = box->GetN();
+  float Tpoint[Nt], logL;
+  TRandom3 ran3;
+  TVectorD trialR(Nt);
+  TVectorD trialT(Nt);
+  TVectorD propT(Nt);
+  double p0, p1;      // Current and proposed probabilities
+  
+  TTree* ptree = new TTree("ptree", "Metropolis-Hastings posterior probability");
+  for (int t=0; t<Nt; t++) {
+    ptree->Branch(Form("T%d",t), &Tpoint[t], Form("T%d/F",t));  
+  }
+  ptree->Branch("logL", &logL, "logL/F");
+
+  // Set the first point as \tilde{T}
+  for (int t=0; t<Nt; t++)
+    trialT(t) = box->GetY()[t];
+  
+  trialR = Prt*trialT;
+  p0 = LogPoissonLikelihood(D,trialR);
+
+  std::cout << Form("Sampling L(D|T)*pi(T) using MCMC...") 
+	    << std::endl;
+
+  for (int i=0; i<nSamples; i++) {
+    
+    PrintPercentDone(i, nSamples, 5);
+    
+    // Get a proposal point from a small box centered at the current
+    // point. 
+    for (int t=0; t<Nt; t++) {
+      double min = box->GetY()[t] - box->GetEYlow()[t];
+      double max = box->GetY()[t] + box->GetEYhigh()[t];
+      double dT = 0.01*(max - min);
+
+      // Make sure the proposal cell stays within the box, and that it
+      // always has the same volume dT^Nt.
+      double lo = TMath::Max(min, trialT(t) - dT/2);
+      double hi = TMath::Min(max, trialT(t) + dT/2);
+      if (lo == min)
+      	hi = lo + dT;
+      if (hi == max)
+      	lo = hi - dT;
+
+      propT(t) = ran3.Uniform(lo, hi);
+      
+      if (propT(t) < min) 
+	Warning("","T(%d) = %f < %f", t, propT(t), min);
+      if (propT(t) > max) 
+	Warning("","T(%d) = %f > %f", t, propT(t), max);
+    }
+
+    trialR = Prt*propT;
+    p1 = LogPoissonLikelihood(D,trialR);
+    bool accept = false;      
+    if (p1 >= p0)
+      accept = true;
+    else if (TMath::Log(ran3.Uniform()) < p1-p0)
+      accept = true;
+
+    if (accept) {
+      logL = p0 = p1;
+      trialT = propT;
+      for (int t=0; t<Nt; t++) {
+	Tpoint[t] = (float)propT(t);
+      }
+      ptree->Fill();
+    }
+  }
+  Printf("Filled tree with %lld entries.",ptree->GetEntries());
+
+  return ptree;
+}
+
+double 
+PoissonLikelihood(TVectorD& b, TVectorD& R)
+{
+
+  double ans = 1;
+  for (int r=0; r<b.GetNrows(); ++r) {
+    ans *= TMath::Poisson(b(r), R(r));
+  }
+  return ans;
+}
+
+double 
+LogPoissonLikelihood(TVectorD& b, TVectorD& R)
+{
+  double ans = 0;
+  for (int r=0; r<b.GetNrows(); ++r) {
+    ans +=LogPoisson(b(r), R(r));
+  }
+  return ans;
+}
+
+double 
+LogPoisson(double x, double mu)
+{
+  if (mu >= 1000)
+    return LogGaussian(x,mu,TMath::Sqrt(mu),true);
+  
+  if (x < 0) 
+    return 0;
+  
+  if (x==0.)
+    return -mu;
+  
+  return x*TMath::Log(mu) - mu - LogFactorial(int(x));
+}
+
+double 
+LogGaussian(double x, double mu, double sigma, bool norm)
+{
+  if (sigma <= 0) 
+    return 0;
+  
+  double ans = -0.5*(x-mu)*(x-mu)/sigma/sigma;
+  
+  if (norm) 
+    ans -= TMath::Log(TMath::Sqrt(TMath::TwoPi())*sigma);
+
+  return ans; 
+}
+
+double 
+LogFactorial(int n)
+{
+  // Cache ln(n!) values for speed.
+  static int nStoredLnFac = 10000;
+  static double* lnFactorial = 0;
+
+  if (!lnFactorial) {
+    // Compute & store ln n! on initial function call
+    if (0) {
+      std::cout << 
+	Form("Pre-caching ln(n!) values up to n = %d...", nStoredLnFac) 
+		<< std::flush;
+    }
+    
+    lnFactorial = new double[nStoredLnFac+1];
+    
+    // Set ln(0) = 0 for stability
+    lnFactorial[0] = 0.;
+    for (int i=1; i<=nStoredLnFac; i++)
+      lnFactorial[i] = TMath::LnGamma(i+1);
+
+    //    Printf("Done.");
+  }
+
+  if (n<=nStoredLnFac) 
+    return lnFactorial[n];
+
+  return  TMath::LnGamma(n+1);
+}
+
+BayesianCredibilityInterval 
+GetBCI(TH1* hp, double probFrac)
+{
+  // Returns limits of shortest interval in hp containing the
+  // probability fraction given by probFrac.
+  // The hp histogram is supposed to be a PDF.
+  BayesianCredibilityInterval bci;
+  
+  if (probFrac <= 0. || probFrac >= 1.0)
+    Error("BayesianCredibilityInterval()",
+	  "0 < probFrac < 1 required. %f requested", probFrac);
+  
+  double tot = hp->Integral(1,hp->GetNbinsX());
+  if (tot < 0.999 || tot > 1.001) {
+    Warning("BayesianCredibilityInterval()",
+	    "PDF histogram integral = %f.\nNormalizing to 1.", tot);
+    hp->Scale(1./tot);
+  }
+
+  // Create a cumulative probability density graph from hp
+  TGraph cdf(hp);
+  int N = cdf.GetN();
+  for (int i=1; i<N; i++) {
+    cdf.SetPoint(i,cdf.GetX()[i],cdf.GetY()[i]+cdf.GetY()[i-1]);
+  }
+  bci.u1 = cdf.GetX()[0];
+  bci.u1 = cdf.GetX()[N-1];
+  
+  // nb bins add up to probFrac, starting at bin i.
+  // Initialize to the max. number of bins, then minimize.
+  // Assuming bins have uniform width (!)
+  int nb = N;
+
+  // Bounds of probFrac starting at bin i
+  double p1, p2;  
+
+  // Last bin in probFrac starting at bin i
+  int i2;
+
+  for (int i=0; i<N; i++) {
+    p1 = cdf.GetY()[i];
+    p2 = p1 + probFrac;
+
+    if (p2 > 1.0) break;
+
+    i2 = TMath::BinarySearch(N, cdf.GetY(), p2);
+
+    if (i2-i < nb) {
+      nb = i2-i;
+      bci.u1 = cdf.GetX()[i];
+      bci.u2 = cdf.GetX()[i2];
+    }
+  }
+
+  bci.u  = (bci.u1+bci.u2)/2;
+  bci.du = (bci.u2-bci.u1)/2;
+  
+  return bci;
+}
+
+void
+PrintPercentDone(int i, int N, int k)
+{
+  // Print i/N (in %) every k%.
+
+  int percent = i*100./N;
+  if (percent % k == 0)
+    std::cout << Form("  %d%%\r", percent) << std::flush;
+  return;
+}
+
