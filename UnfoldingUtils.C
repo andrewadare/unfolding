@@ -480,7 +480,7 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   }
 
   TVectorD regc = ElemMult(f,c);
-   TVectorD wreg = X*regc;
+  TVectorD wreg = X*regc;
   TVectorD xreg = ElemMult(fVecXini, wreg);
 
   // Save to output for parameter optimization analysis
@@ -510,19 +510,19 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   gsvd->b.ResizeTo(b);      gsvd->b = b;
 
   gsvd->UHist  = Matrix2Hist(g.U, Form("U_gsvd_%d",id),
-			      fTrueX1, fTrueX2,0,n);
+			     fTrueX1, fTrueX2,0,n);
   gsvd->XHist  = Matrix2Hist(X, Form("X_gsvd_%d",id),
-			      fTrueX1, fTrueX2,0,n);
+			     fTrueX1, fTrueX2,0,n);
   gsvd->wregHist = Vec2Hist(wreg, fTrueX1,fTrueX2,
-			     Form("gsvd_wreg_%d",id), 
-			     Form("w (#lambda = %g)", lambda));
+			    Form("gsvd_wreg_%d",id), 
+			    Form("w (#lambda = %g)", lambda));
   gsvd->xregHist = Vec2Hist(xreg, fTrueX1,fTrueX2,
-			     Form("gsvd_xreg_%d",id),
-  			     Form("x (#lambda = %g)", lambda));
+			    Form("gsvd_xreg_%d",id),
+			    Form("x (#lambda = %g)", lambda));
 
   gsvd->bregHist = Vec2Hist(fMatAhat*xreg, fMeasX1,fMeasX2,
-			     Form("gsvd_breg_%d",id),
-  			     Form("Ax_{#lambda} (#lambda = %g)", lambda));
+			    Form("gsvd_breg_%d",id),
+			    Form("Ax_{#lambda} (#lambda = %g)", lambda));
   
   // Assign uncertainties
   for (int j=0; j<n; j++) {
@@ -610,7 +610,7 @@ UnfoldingUtils::DrawGSVDPlot(GSVDResult* gsvd, double ymin, double ymax, TString
   if (opt.Contains("c")) {
     gsvd->coeffAbs->Draw("plsame");
     leg->AddEntry(gsvd->coeffAbs, gsvd->coeffAbs->GetTitle(), "ep");
-  // TODO: add damped coeffs f|U'*b|/alpha
+    // TODO: add damped coeffs f|U'*b|/alpha
   }
   
   leg->SetFillColor(kNone);
@@ -624,6 +624,7 @@ UnfoldingUtils::DrawGSVDPlot(GSVDResult* gsvd, double ymin, double ymax, TString
 
   return c;
 }
+
 
 TestProblem
 UnfoldingUtils::MonteCarloConvolution(const int m, 
@@ -651,7 +652,7 @@ UnfoldingUtils::MonteCarloConvolution(const int m,
 			    "s (observed);t (true)", m, n));
 
   TH2D* RMC = new TH2D(Form("R_MC%d",id), "A_{MC}", 
-			m,xm1,xm2,n,xt1,xt2);
+		       m,xm1,xm2,n,xt1,xt2);
 
   // Model a true and a measured distribution
   // There is no bIdeal for this problem.
@@ -660,6 +661,8 @@ UnfoldingUtils::MonteCarloConvolution(const int m,
   t.bNoisy    = new TH1D("hMeas",    "hMeas",    m, xm1, xm2);  
   t.xTruthEst->Sumw2();
   t.bNoisy->Sumw2();
+
+
   for (Int_t i=0; i<nEvents; i++) {
     Double_t xt = truthFn->GetRandom();
     t.xTruthEst->Fill(xt);
@@ -678,6 +681,88 @@ UnfoldingUtils::MonteCarloConvolution(const int m,
     t.xTruth->SetBinContent(j, val);
   }
   t.xTruth->Scale(nEvents/t.xTruth->Integral());
+
+  return t;
+}
+
+TestProblem
+UnfoldingUtils::AtlasDiJetMass(const int Nt, 
+			       const int Nr,
+			       double tbins[],
+			       double rbins[],
+			       const double apar,
+			       const double bpar,
+			       const int nEvents,
+			       const double evtWeight)
+{
+  // From "Fully Bayesian Unfolding" by G. Choudalakis.
+  // see arXiv:1201.4612v4
+  // Recommended binning:
+  // double bins[Nt+1] = {0};
+  // for (int j=0; j<=Nt; j++) 
+  //   bins[j] = 500*TMath::Exp(0.15*j);
+
+  static int id = 0; id++;
+  TestProblem t;
+  TRandom3 ran;
+
+  // Mass distribution dN/dM
+  TF1* mass = new TF1("mass_dist", 
+		      "TMath::Power(1.-x/7000,6.0)/TMath::Power(x/7000,4.8)",
+		      tbins[0], tbins[Nt]);
+  
+  // Generate test problem by MC convolution
+  TH1D* hT   = new TH1D("hT",   "Truth mass dist. #hat{T}", Nt, tbins);
+  TH1D* hTmc = new TH1D("hTmc", "MC Truth mass dist. #tilde{T}", Nt, tbins);
+  TH1D* hD   = new TH1D("hD", "Measured mass dist.", Nr, rbins);
+  TH2D* hM   = new TH2D("hM", "Migration matrix", Nr, rbins, Nt, tbins);  
+  hM->SetTitle(Form("%d x %d migration matrix M_{tr};"
+		    "mass (observed);mass (true)", Nr, Nt));
+  hT->SetLineWidth(2);
+  hD->SetLineWidth(2);
+
+  std::cout << Form("Generating test problem...") << std::flush;
+  // Fill histos with MC events.
+  // The response matrix gets more statistics than the data.
+  double xt, xm, sigma;
+  for (int i=0; i<nEvents; i++) {
+    xt = mass->GetRandom();
+    sigma = apar*TMath::Sqrt(xt) + bpar*xt;
+    xm = xt + ran.Gaus(0, sigma);
+    hM->Fill(xm, xt);
+    hTmc->Fill(xt, evtWeight);
+    hD->Fill(xm, evtWeight);
+  }
+
+  // Simulate Poisson fluctuations in real data (integer content, empty bins)
+  for (int r=1; r<=Nr; r++)
+    hD->SetBinContent(r, ran.Poisson(hD->GetBinContent(r)));
+  
+  // The true truth \hat{T}
+  double totmass = mass->Integral(tbins[0],tbins[Nt]);
+  for (int j=1; j<=Nt; j++) {
+    hT->SetBinContent(j, evtWeight*nEvents*mass->Integral(tbins[j-1],tbins[j])/totmass);
+    hT->SetBinError(j, 0);
+  }
+  cout << "Done." << endl;
+
+  // Projection of migration matrix to truth axis. hMt is the
+  // numerator for efficiency. Bin contents should be counts
+  // here. Elements are normalized to contain probabilities only after
+  // projection & division by T-tilde.
+  TH1D* hMt  = hM->ProjectionY("hMt",1,Nr);
+  TH1D* heff = (TH1D*)hMt->Clone("heff");
+  heff->Divide(hTmc);
+  heff->Scale(evtWeight);
+  hM->Scale(1./nEvents);
+  hMt->Scale(1./nEvents);
+
+  t.Response  = hM;
+  t.xTruth    = hT;
+  t.xTruthEst = hTmc;
+  t.xIni      = hMt;
+  t.bNoisy    = hD;
+  t.eff       = heff;
 
   return t;
 }
@@ -810,13 +895,14 @@ TH2D*
 UnfoldingUtils::Matrix2Hist(TMatrixD& A, TString hName, 
 			    double xbins[], double ybins[])
 {
+  // xbins and ybins better have size m+1 and n+1, respectively
   int m = A.GetNrows();
   int n = A.GetNcols();
   TH2D* h = new TH2D(hName.Data(),hName.Data(),m,xbins,n,ybins);
   
   for (int i=0; i<m; i++) {
     for (int j=0; j<n; j++) {
-	h->SetBinContent(i+1, j+1, A(i,j));
+      h->SetBinContent(i+1, j+1, A(i,j));
     }
   }
   
@@ -869,6 +955,20 @@ UnfoldingUtils::Hist2Vec(const TH1* h, TString opt)
     else
       val = h->GetBinContent(i+1);
     v(i) = val;
+  }
+  return v;
+}
+
+TVectorD 
+UnfoldingUtils::Graph2Vec(const TGraph* g)
+{
+  // Return a TVectorD from a TGraph (or inherited classes)
+  int nb = g->GetN();
+  TVectorD v(nb);
+  if (!g) return v;
+
+  for (int i=0; i<nb; i++) {
+    v(i) = g->GetY()[i];
   }
   return v;
 }
@@ -1078,6 +1178,8 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   result.GcvCurve  = new TGraph(nk);
   result.RhoCurve  = new TGraph(nk);
   result.FilterSum = new TGraph(nk);
+  TGraph* fsInv    = new TGraph(nk); // FilterSum w/ x,y swapped 
+
 
   result.hwCov = new TH3D(Form("hwCov_gsvd_%d", id),
 			  Form("hwCov_gsvd_%d", id),
@@ -1098,23 +1200,26 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   result.kStf = 0;
   result.lambdaStf = 0;
 
-  // Compute the number of significant GSVD coefficients
-  int nSignificantGSVDCoeffs = 0;
-  double errThreshold = 2*GetbErrMean();
-  for (int i=0; i<fN; i++) {
-    TH1D* h = gsvd->UTbAbs;
-    if (h->GetBinContent(i+1) > errThreshold)
-      nSignificantGSVDCoeffs++;
-    else
-      break;
-  }
-  Printf("# coeffs > %f = %d", errThreshold, nSignificantGSVDCoeffs);
-
   // Stuff for computing covariance
   TMatrixD B(gsvd->covb); // Error matrix of b
   TMatrixD FCd(n,n);      // Filter factor matrix * pseudoinverse(diag(alpha))
   // TMatrixD Ap(n,m);       // Regularized inverse A^#
   TMatrixD UT(TMatrixD::kTransposed, gsvd->U);  
+
+  // Compute the number of significant GSVD coefficients
+  int nSignificantGSVDCoeffs = 0;
+  double errThreshold = 0;
+  for (int i=0; i<fM; i++) 
+    errThreshold += B(i,i)/fM;
+  
+  for (int j=0; j<fN-1; j++) {
+    if (gsvd->UTbAbs->GetBinContent(j+1) > errThreshold && 
+	gsvd->UTbAbs->GetBinContent(j+2) < errThreshold) {
+      nSignificantGSVDCoeffs = j;
+      break;
+    }
+  }
+  Printf("# coeffs > %.2f = %d", errThreshold, nSignificantGSVDCoeffs);
 
   // Scan over lambda values, generate nk solutions
   for (int k=0; k<nk; k++) {
@@ -1220,11 +1325,12 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
     result.GcvCurve->SetPoint(k, lambda(k), gcv);
     result.RhoCurve->SetPoint(k, lambda(k), rhoMean);
     result.FilterSum->SetPoint(k, lambda(k), fsum);
+    fsInv->SetPoint(k, fsum, lambda(k));
 
-    if (fsum > nSignificantGSVDCoeffs) {
-      result.lambdaStf = lambda(k);
-      result.kStf = k;
-    }
+    // if (fsum > nSignificantGSVDCoeffs) {
+    //   result.lambdaStf = lambda(k);
+    //   result.kStf = k;
+    // }
     if (gcv < gcvMin) {
       gcvMin = gcv;
       result.lambdaGcv = lambda(k);
@@ -1235,8 +1341,10 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
       result.lambdaRho = lambda(k);
       result.kRho = k;
     }
-
   }
+
+  result.lambdaStf = fsInv->Eval(double(nSignificantGSVDCoeffs));
+  result.kStf = TMath::BinarySearch(nk, result.FilterSum->GetX(), result.lambdaStf);
 
   // Assign result.Lcurvature and result.kLcv
   result.LCurvature = LogCurvature(result.LCurve, lambda, result.kLcv);
@@ -1253,7 +1361,7 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   result.GcvCurve->SetNameTitle("gsvd_gcv","GSVD cross-validation curve;"
 				"#lambda;G(#lambda)");
   result.FilterSum->SetNameTitle("gsvd_fsum","GSVD Tikhonov filter factor sum (= effective NDF);"
-				"#lambda;effective NDF");
+				 "#lambda;effective NDF");
 
   result.RhoCurve->GetXaxis()->CenterTitle();
   result.RhoCurve->GetYaxis()->CenterTitle();
@@ -1880,7 +1988,7 @@ UnfoldingUtils::LSolve(TVectorD& result, const TMatrixD& L, const TVectorD& y,
     result = x;
   }
   return;
- }
+}
 
 void 
 UnfoldingUtils::LTSolve(TVectorD& result, const TMatrixD& L, const TVectorD& y)
@@ -1930,7 +2038,7 @@ UnfoldingUtils::LTSolve(TVectorD& result, const TMatrixD& L, const TVectorD& y)
 
   }
   return;
- }
+}
 
 TMatrixD 
 UnfoldingUtils::MoorePenroseInverse(TMatrixD& A, double tol)
@@ -2103,6 +2211,30 @@ UnfoldingUtils::DivColsByVector(const TMatrixD& M, const TVectorD& v,
 }
 
 TMatrixD 
+UnfoldingUtils::DivRowsByVector(const TMatrixD& M, const TVectorD& v,
+				bool makeZeroIfNaN)
+{
+  // Divide M rows by v elementwise: R(i,j) = M(i,j) / v(j).
+  // I.e. each column j is scaled by 1/v(j). 
+  TMatrixD R(M);
+  int m = R.GetNrows(), n = R.GetNcols();
+
+  if (v.GetNoElements() != n)
+    Error("UnfoldingUtils::DivRowsByVector()", 
+	  "nrows %d != vector size %d", n, v.GetNoElements());
+  
+  for (int i=0; i<m; i++) {
+    for (int j=0; j<n; j++) {
+      if (v(j) != 0) 
+	R(i,j) /= v(j);
+      else if (makeZeroIfNaN) 
+	R(i,j) = 0;
+    }
+  }
+  return R;
+}
+
+TMatrixD 
 UnfoldingUtils::MultRowsByVector(const TMatrixD& M, const TVectorD& v)
 {
   // Multiply M rows by v elementwise: R(i,j) = M(i,j) * v(j).
@@ -2116,7 +2248,7 @@ UnfoldingUtils::MultRowsByVector(const TMatrixD& M, const TVectorD& v)
   
   for (int i=0; i<m; i++) {
     for (int j=0; j<n; j++) {
-	R(i,j) *= v(j);
+      R(i,j) *= v(j);
     }
   }
   return R;
@@ -2298,16 +2430,16 @@ UnfoldingUtils::Null(TMatrixD& A)
     }
   }
   
-    return W;
+  return W;
 }
 
 void 
 UnfoldingUtils::SetTH1Props(TH1* h,
-			     Int_t linecolor,
-			     Int_t fillcolor,
-			     Int_t markercolor,
-			     Int_t markerstyle,
-			     Double_t markersize) 
+			    Int_t linecolor,
+			    Int_t fillcolor,
+			    Int_t markercolor,
+			    Int_t markerstyle,
+			    Double_t markersize) 
 {
   h->SetLineColor(linecolor);
   h->SetFillColor(fillcolor);
@@ -2521,6 +2653,16 @@ UnfoldingUtils::NormalizeXSum(TH2* hA, TH1* hN)
       double val = w*hA->GetBinContent(i+1,j+1);
       hA->SetBinContent(i+1,j+1, val);
     }
+  }
+}
+
+void 
+UnfoldingUtils::NormalizeRows(TMatrixD& A, TVectorD& normto)
+{
+  // Scale elements of row i so that they sum to to normto(i)
+  for (int i=0; i<A.GetNrows(); i++) {
+    TVectorD row = TMatrixDRow(A,i);
+    TMatrixDRow(A,i) *= normto(i)/row.Sum();
   }
 }
 
@@ -2868,7 +3010,7 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
   if (m > p) {
     Error("UnfoldingUtils::CSDecomp()",
 	  "Q1 rows (%d) <= Q2 (%d) rows required.\nExiting.",m,p);
-        gSystem->Exit(-1);
+    gSystem->Exit(-1);
   }
 
   TMatrixD C(m,l);

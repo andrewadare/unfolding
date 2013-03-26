@@ -49,9 +49,11 @@ struct GSVDecompResult   // Output from GSVD().
 
 struct TestProblem       // Output from test problem generator.
 {
+  TMatrixD R;            // Fine-binned response matrix.
   TH2D* Response;        // Response matrix.
   TH1D* xTruth;          // Discrete version of true PDF.
   TH1D* xTruthEst;       // Estimator for xTruth.
+  TH1D* xIni;            // Model truth.
   TH1D* bIdeal;          // Observed b, no noise.
   TH1D* bNoisy;          // Observed b, perturbed by noise.
   TH1D* eff;             // Efficiency: meas/true vs. true x
@@ -182,6 +184,7 @@ class UnfoldingUtils
   // Conversion methods
   TVectorD Hist2Vec(const TH1* h, TString opt=""); // use "unc" to get error
   TMatrixD Hist2Matrix(const TH2* h);
+  TVectorD Graph2Vec(const TGraph* g);
   TH1D* Vec2Hist(const TVectorD& v, Double_t x1, Double_t x2, 
 		 TString name, TString title="");  
   TH2D* Matrix2Hist(TMatrixD& A, TString hName,
@@ -215,6 +218,7 @@ class UnfoldingUtils
   void SwapColumns(TMatrixD &A, int col1, int col2);
   void SwapElements(TVectorD& v, int j1, int j2);
   void NormalizeXSum(TH2* hA, TH1* hN=0); // Modifies hA in-place
+  void NormalizeRows(TMatrixD& A, TVectorD& normto); // Modifies A in-place
   TH2* TH2Product(TH2* hA, TH2* hB, TString name);
   TH2D* TH2Sub(TH2* h, int bx1, int bx2, int by1, int by2, TString name);
 
@@ -230,7 +234,8 @@ class UnfoldingUtils
   TVectorD ElemMult(const TVectorD& x, const TVectorD& y); // Element-wise vector multiplication
   TVectorD ElemDiv (const TVectorD& x, const TVectorD& y, double div0val = 0.);  // Element-wise vector division
   TMatrixD MultRowsByVector(const TMatrixD& M, const TVectorD& v);
-  TMatrixD DivColsByVector(const TMatrixD& M, const TVectorD& v, bool makeZeroIfNaN=true);
+  TMatrixD DivRowsByVector(const TMatrixD& M, const TVectorD& v, bool makeZeroIfNaN=true); // Divide M rows by v elementwise: R(i,j) = M(i,j) / v(j).
+  TMatrixD DivColsByVector(const TMatrixD& M, const TVectorD& v, bool makeZeroIfNaN=true); // Divide M columns by v elementwise: R(i,j) = M(i,j) / v(i).
   TMatrixD OuterProduct(TVectorD a, TVectorD b); // a*b'
   void LTSolve(TVectorD& result, const TMatrixD& L, const TVectorD& y);
   void LSolve(TVectorD& result, const TMatrixD& L, const TVectorD& y, 
@@ -252,7 +257,6 @@ class UnfoldingUtils
   void ShawSystem(const int n, TMatrixD& A, TVectorD& x, TVectorD& b,
 		  double noise=0);
 
-  // Warning: not tested for m != n (TODO)
   TestProblem MonteCarloConvolution(const int m, 
 				    const int n,
 				    const double xm1,
@@ -263,6 +267,15 @@ class UnfoldingUtils
 				    TF1* kernelFn, 
 				    const int nEvents);
   
+  TestProblem AtlasDiJetMass(const int Nt, 
+			     const int Nr,
+			     double tbins[],
+			     double rbins[],
+			     const double apar = 0.5,
+			     const double bpar = 0.1,
+			     const int nEvents = int(1e7),
+			     const double evtWeight = 1e-3);
+
   // Unfolding methods:
   // Preconditioned Conjugate Gradients for Least Squares
   UnfoldingResult UnfoldPCGLS(const int nIterations, 
