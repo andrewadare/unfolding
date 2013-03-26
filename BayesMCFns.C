@@ -24,6 +24,22 @@ struct BayesianCredibilityInterval
   double u1, u2;
   double u;  // Calculated as (u1+u2)/2
   double du; // Calculated as (u2-u1)/2
+
+  int bin, bin1, bin2;
+  double probRequested, probComputed;
+
+  TGraph cdf;
+
+  BayesianCredibilityInterval() :
+    u1(0), u2(0), u(0), du(0),
+    bin(0), bin1(0), bin2(0),
+    probRequested(0), probComputed(0) {}
+  
+  BayesianCredibilityInterval(double p) :
+  u1(0), u2(0), u(0), du(0),
+  bin(0), bin1(0), bin2(0),
+  probRequested(p), probComputed(0) {}
+  
 };
 
 // Function prototypes
@@ -36,6 +52,7 @@ double LogPoisson(double x, double mu);
 double LogGaussian(double x, double mu, double sigma, bool norm);
 double LogFactorial(int n);
 void PrintPercentDone(int i, int N, int k);  // Print i/N (in %) every k%.
+//TGraphAsymmErrors* ReducedSamplingVolume(TH1D** hmp, TGraphAsymmErrors* old);
 
 TGraphAsymmErrors* 
 HyperBox(TH1D* h) 
@@ -70,7 +87,7 @@ SampleUniform(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* box)
   float Tpoint[Nt], logL, L;
   TRandom3 ran3;
   TVectorD trialT(Nt);
-  TVectorD trialR(Nt);
+  TVectorD trialR(D.GetNrows());
   
   TTree* ptree = new TTree("ptree", "posterior probability from uniform sampling");
   for (int t=0; t<Nt; t++) {
@@ -111,7 +128,7 @@ SampleMetropolis(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* bo
   int Nt = box->GetN();
   float Tpoint[Nt], logL;
   TRandom3 ran3;
-  TVectorD trialR(Nt);
+  TVectorD trialR(D.GetNrows());
   TVectorD trialT(Nt);
   TVectorD propT(Nt);
   double p0, p1;      // Current and proposed probabilities
@@ -134,7 +151,7 @@ SampleMetropolis(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* bo
 
   for (int i=0; i<nSamples; i++) {
     
-    PrintPercentDone(i, nSamples, 5);
+    PrintPercentDone(i, nSamples, 1);
     
     // Get a proposal point from a small box centered at the current
     // point. 
@@ -269,11 +286,13 @@ GetBCI(TH1* hp, double probFrac)
   // Returns limits of shortest interval in hp containing the
   // probability fraction given by probFrac.
   // The hp histogram is supposed to be a PDF.
-  BayesianCredibilityInterval bci;
+  BayesianCredibilityInterval bci(probFrac);
   
-  if (probFrac <= 0. || probFrac >= 1.0)
+  if (probFrac <= 0. || probFrac >= 1.0) {
     Error("BayesianCredibilityInterval()",
-	  "0 < probFrac < 1 required. %f requested", probFrac);
+	  "Requested p %.3f outside 0 < p < 1", probFrac);
+    return bci;
+  }
   
   double tot = hp->Integral(1,hp->GetNbinsX());
   if (tot < 0.999 || tot > 1.001) {
@@ -281,16 +300,20 @@ GetBCI(TH1* hp, double probFrac)
 	    "PDF histogram integral = %f.\nNormalizing to 1.", tot);
     hp->Scale(1./tot);
   }
-
-  // Create a cumulative probability density graph from hp
-  TGraph cdf(hp);
-  int N = cdf.GetN();
-  for (int i=1; i<N; i++) {
-    cdf.SetPoint(i,cdf.GetX()[i],cdf.GetY()[i]+cdf.GetY()[i-1]);
-  }
-  bci.u1 = cdf.GetX()[0];
-  bci.u1 = cdf.GetX()[N-1];
   
+  // Create a cumulative probability density graph from hp
+  //  TGraph cdf(hp);
+  //  int N = cdf.GetN();
+  int N = hp->GetNbinsX();
+  TGraph cdf(N);
+  double psum = 0;
+  for (int i=0; i<N; i++) {
+    //  for (int i=1; i<N; i++) {
+    //    cdf.SetPoint(i,cdf.GetX()[i],cdf.GetY()[i]+cdf.GetY()[i-1]);
+    psum += hp->GetBinContent(i+1);
+    cdf.SetPoint(i, hp->GetBinCenter(i+1), psum);
+  }
+
   // nb bins add up to probFrac, starting at bin i.
   // Initialize to the max. number of bins, then minimize.
   // Assuming bins have uniform width (!)
@@ -299,27 +322,63 @@ GetBCI(TH1* hp, double probFrac)
   // Bounds of probFrac starting at bin i
   double p1, p2;  
 
-  // Last bin in probFrac starting at bin i
-  int i2;
+  int i99 = TMath::BinarySearch(N, cdf.GetY(), 0.99);
+  bci.u1 = cdf.GetX()[0];
+  bci.u2 = cdf.GetX()[i99];
+  
 
-  for (int i=0; i<N; i++) {
+  // Last bin in probFrac starting at bin i
+  int i2 = 0;
+  //  Printf("%d", i99);
+
+  for (int i=0; i<i99; i++) {
     p1 = cdf.GetY()[i];
     p2 = p1 + probFrac;
-
-    if (p2 > 1.0) break;
-
+    
     i2 = TMath::BinarySearch(N, cdf.GetY(), p2);
+    
+    // for (int j=i+1; j<N; i++) {
+    //   if ( cdf.GetY()[j] >= p2 ) {
+    // 	i2 = j;
+    // 	break;
+    //   }
+    // }
 
-    if (i2-i < nb) {
-      nb = i2-i;
+    if (i2 > N-2)
+      continue;
+    
+    //    Printf("%d", i2);
+    
+    if (i2-i+1 < nb) {
+      nb = i2-i+1;
       bci.u1 = cdf.GetX()[i];
       bci.u2 = cdf.GetX()[i2];
     }
+
   }
 
-  bci.u  = (bci.u1+bci.u2)/2;
-  bci.du = (bci.u2-bci.u1)/2;
-  
+  bci.u    = (bci.u1+bci.u2)/2;
+  bci.du   = (bci.u2-bci.u1)/2;
+  bci.bin  = hp->FindBin(bci.u);
+  bci.bin1 = hp->FindBin(bci.u1);
+  bci.bin2 = hp->FindBin(bci.u2);
+  bci.probComputed = hp->Integral(bci.bin1,bci.bin2);
+  bci.cdf = cdf;
+
+  double adiff = TMath::Abs(bci.probComputed - bci.probRequested);
+
+  if (adiff > 0.20) {
+    Error("GetBCI", "Computed (%.2f) vs. requested (%.2f) prob "
+	  "mismatch for histogram %s.",
+	  bci.probComputed, bci.probRequested, hp->GetName());
+  }
+  else if (adiff > 0.05) {
+    Warning("GetBCI", "Computed probability %.2f for PDF histogram %s "
+	    "differs from requested %.2f."
+	    "\nTry narrower bins if they are close.", 
+	    bci.probComputed, hp->GetName(), bci.probRequested);
+  }
+
   return bci;
 }
 
