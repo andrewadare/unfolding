@@ -28,7 +28,7 @@ struct BayesianCredibilityInterval
   int bin, bin1, bin2;
   double probRequested, probComputed;
 
-  TGraph cdf;
+  TGraphErrors cdf;
 
   BayesianCredibilityInterval() :
     u1(0), u2(0), u(0), du(0),
@@ -84,16 +84,17 @@ TTree*
 SampleUniform(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* box)
 {
   int Nt = box->GetN();
-  float Tpoint[Nt], logL, L;
+  float Tpoint[Nt], logL=0;
   TRandom3 ran3;
   TVectorD trialT(Nt);
   TVectorD trialR(D.GetNrows());
   
-  TTree* ptree = new TTree("ptree", "posterior probability from uniform sampling");
+  TTree* ptree = new TTree("tflat", "posterior probability from uniform sampling");
   for (int t=0; t<Nt; t++) {
     ptree->Branch(Form("T%d",t), &Tpoint[t], Form("T%d/F",t));  
   }
-  ptree->Branch("L", &L, "L/F");
+  //  ptree->Branch("L", &L, "L/F");
+  ptree->Branch("logL", &logL, "logL/F");
 
   std::cout << Form("Sampling L(D|T)*pi(T) uniformly...") 
 	    << std::endl;
@@ -110,7 +111,8 @@ SampleUniform(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* box)
 
     trialR = Prt*trialT;
     logL = (float)LogPoissonLikelihood(D,trialR);
-    L = (logL > -700) ? TMath::Exp(logL) : 0.;
+    // float Lcand = TMath::Exp(logL);
+    // L = (TMath::IsNaN(Lcand)) ? 0 : Lcand;
     
     for (int t=0; t<Nt; t++) {
       Tpoint[t] = (float)trialT(t);
@@ -133,7 +135,7 @@ SampleMetropolis(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* bo
   TVectorD propT(Nt);
   double p0, p1;      // Current and proposed probabilities
   
-  TTree* ptree = new TTree("ptree", "Metropolis-Hastings posterior probability");
+  TTree* ptree = new TTree("tmcmc", "Metropolis-Hastings Markov chain");
   for (int t=0; t<Nt; t++) {
     ptree->Branch(Form("T%d",t), &Tpoint[t], Form("T%d/F",t));  
   }
@@ -305,13 +307,14 @@ GetBCI(TH1* hp, double probFrac)
   //  TGraph cdf(hp);
   //  int N = cdf.GetN();
   int N = hp->GetNbinsX();
-  TGraph cdf(N);
+  TGraphErrors cdf(N);
   double psum = 0;
   for (int i=0; i<N; i++) {
     //  for (int i=1; i<N; i++) {
     //    cdf.SetPoint(i,cdf.GetX()[i],cdf.GetY()[i]+cdf.GetY()[i-1]);
     psum += hp->GetBinContent(i+1);
     cdf.SetPoint(i, hp->GetBinCenter(i+1), psum);
+    cdf.SetPointError(i, 0.5*hp->GetBinWidth(i+1), 0.0);
   }
 
   // nb bins add up to probFrac, starting at bin i.
@@ -323,9 +326,8 @@ GetBCI(TH1* hp, double probFrac)
   double p1, p2;  
 
   int i99 = TMath::BinarySearch(N, cdf.GetY(), 0.99);
-  bci.u1 = cdf.GetX()[0];
-  bci.u2 = cdf.GetX()[i99];
-  
+  bci.u1 = cdf.GetX()[0] - 0.99*cdf.GetEX()[0];
+  bci.u2 = cdf.GetX()[i99] + 0.99*cdf.GetEX()[i99];
 
   // Last bin in probFrac starting at bin i
   int i2 = 0;
@@ -351,8 +353,11 @@ GetBCI(TH1* hp, double probFrac)
     
     if (i2-i+1 < nb) {
       nb = i2-i+1;
-      bci.u1 = cdf.GetX()[i];
-      bci.u2 = cdf.GetX()[i2];
+      // bci.u1 = cdf.GetX()[i];
+      // bci.u2 = cdf.GetX()[i2];
+      
+      bci.u1 = cdf.GetX()[i] - 0.99*cdf.GetEX()[i];
+      bci.u2 = cdf.GetX()[i2] + 0.99*cdf.GetEX()[i2];
     }
 
   }
