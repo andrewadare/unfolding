@@ -78,7 +78,7 @@ void BayesUnfoldingExample641()
     double thi = box->GetY()[t] + box->GetEYhigh()[t];
     hMCMC[t] = new TH1D(Form("hMCMC%d",t),"",nMcmcBins, tlo, thi);
     hMCMC[t]->SetTitle(Form("MCMC - point %d;"
-			    "dijet mass (GeV/c^{2});"
+			    "entries;"
 			    "Marginal posterior probability",t));
 
     // Marginalize with unit weight when using MCMC, weight by
