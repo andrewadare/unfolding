@@ -68,7 +68,10 @@ void BayesUnfoldingExample641()
   // Compute initial sampling volume and do MCMC sampling
   TGraphAsymmErrors* box = HyperBox(hTmc);
   SetGraphProps(box, kGreen+2, kNone, kSpring, kFullSquare, 1.0);
-  TTree* tmcmc = SampleMetropolis(nMcmcSamples, D, Prt, box);
+  //  TTree* tmcmc = SampleMetropolis(nMcmcSamples, D, Prt, box);
+  
+  double alpha = 0.; // No regularization
+  TTree* tmcmc = SampleMH(nMcmcSamples, nMcmcSamples/5, D, Prt, box, alpha, Tmc);
 
   // Create marginal prob. distributions from MCMC
   std::cout << Form("Marginalizing parameters from Markov chain...") << std::flush;
