@@ -45,14 +45,17 @@ struct BayesianCredibilityInterval
 // Function prototypes
 TGraphAsymmErrors* HyperBox(TH1D* h);
 TTree* SampleUniform(   int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* box);
-TTree* SampleMetropolis(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* box);
+// TTree* SampleMH(int nSamples, int nBurnIn, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* box);
+TTree* 
+SampleMH(int nSamples, int nBurnIn, TVectorD& D, TMatrixD& Prt, 
+	 TGraphAsymmErrors* box, double alpha, TVectorD& Tmc);
 double PoissonLikelihood(TVectorD& b, TVectorD& R);
 double LogPoissonLikelihood(TVectorD& b, TVectorD& R);
 double LogPoisson(double x, double mu);
 double LogGaussian(double x, double mu, double sigma, bool norm);
 double LogFactorial(int n);
 void PrintPercentDone(int i, int N, int k);  // Print i/N (in %) every k%.
-//TGraphAsymmErrors* ReducedSamplingVolume(TH1D** hmp, TGraphAsymmErrors* old);
+BayesianCredibilityInterval GetBCI(TH1* hp, double probFrac);
 
 TGraphAsymmErrors* 
 HyperBox(TH1D* h) 
@@ -93,7 +96,7 @@ SampleUniform(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* box)
   for (int t=0; t<Nt; t++) {
     ptree->Branch(Form("T%d",t), &Tpoint[t], Form("T%d/F",t));  
   }
-  //  ptree->Branch("L", &L, "L/F");
+
   ptree->Branch("logL", &logL, "logL/F");
 
   std::cout << Form("Sampling L(D|T)*pi(T) uniformly...") 
@@ -111,8 +114,6 @@ SampleUniform(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* box)
 
     trialR = Prt*trialT;
     logL = (float)LogPoissonLikelihood(D,trialR);
-    // float Lcand = TMath::Exp(logL);
-    // L = (TMath::IsNaN(Lcand)) ? 0 : Lcand;
     
     for (int t=0; t<Nt; t++) {
       Tpoint[t] = (float)trialT(t);
@@ -125,7 +126,8 @@ SampleUniform(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* box)
 }
 
 TTree* 
-SampleMetropolis(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* box)
+SampleMH(int nSamples, int nBurnIn, TVectorD& D, TMatrixD& Prt, 
+	 TGraphAsymmErrors* box, double alpha, TVectorD& Tmc)
 {
   int Nt = box->GetN();
   float Tpoint[Nt], logL;
@@ -148,12 +150,20 @@ SampleMetropolis(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* bo
   trialR = Prt*trialT;
   p0 = LogPoissonLikelihood(D,trialR);
 
+  // Add regularization
+  if (alpha > 0) {
+    for (int t=0; t<Nt; t++) {
+      double arg = alpha*(trialT(t) - Tmc(t))/Tmc(t);    
+      p0 -= 0.5*arg*arg;
+    }
+  }
+  
   std::cout << Form("Sampling L(D|T)*pi(T) using MCMC...") 
 	    << std::endl;
 
-  for (int i=0; i<nSamples; i++) {
+  for (int i=0; i < nSamples + nBurnIn; i++) {
     
-    PrintPercentDone(i, nSamples, 1);
+    PrintPercentDone(i, nSamples + nBurnIn, 1);
     
     // Get a proposal point from a small box centered at the current
     // point. 
@@ -172,6 +182,15 @@ SampleMetropolis(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* bo
       	lo = hi - dT;
 
       propT(t) = ran3.Uniform(lo, hi);
+
+      if (false) {	// Try Gaussian proposal instead
+	bool confirmedInside = false;
+	while (!confirmedInside) {
+	  propT(t) = ran3.Gaus(trialT(t), dT/2);
+	  if ((propT(t) >= min) && (propT(t) <= max)) 
+	    confirmedInside = true;
+	}
+      }
       
       if (propT(t) < min) 
 	Warning("","T(%d) = %f < %f", t, propT(t), min);
@@ -181,6 +200,15 @@ SampleMetropolis(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* bo
 
     trialR = Prt*propT;
     p1 = LogPoissonLikelihood(D,trialR);
+
+    // Add regularization
+    if (alpha > 0) {
+      for (int t=0; t<Nt; t++) {
+	double arg = alpha*(propT(t) - Tmc(t))/Tmc(t);    
+	p1 -= 0.5*arg*arg;
+      }
+    }
+
     bool accept = false;      
     if (p1 >= p0)
       accept = true;
@@ -193,7 +221,8 @@ SampleMetropolis(int nSamples, TVectorD& D, TMatrixD& Prt, TGraphAsymmErrors* bo
       for (int t=0; t<Nt; t++) {
 	Tpoint[t] = (float)propT(t);
       }
-      ptree->Fill();
+      if (i >= nBurnIn)
+	ptree->Fill();
     }
   }
   Printf("Filled tree with %lld entries.",ptree->GetEntries());
