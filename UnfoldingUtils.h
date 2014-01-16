@@ -293,6 +293,9 @@ class UnfoldingUtils
 			      const TH1* hb               = 0, 
 			      const TH1* hXini            = 0);
   
+  TH1D* UnfoldTLS();
+
+
   // Richardson-Lucy algorithm
   UnfoldingResult UnfoldRichardsonLucy(const int nIterations);
   
