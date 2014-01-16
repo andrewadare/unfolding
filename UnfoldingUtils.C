@@ -1585,6 +1585,41 @@ UnfoldingUtils::UnfoldSVD(double lambda,
   return hx;
 }
 
+TH1D*
+UnfoldingUtils::UnfoldTLS()
+{
+  TMatrixD A = GetA();
+  TVectorD b = Getb();
+  
+  TMatrixD C(fM, fN+1); // C = [A b]
+  C.SetSub(0,0,A);
+  for (int i=0; i<fM; i++) C(i,fN) = b(i);
+  
+  TDecompSVD svdc(C);
+  TMatrixD V = svdc.GetV();
+  TVectorD x(fN);
+  for (int i=0; i<fN; i++) x(i) = V(i, fN);
+
+  x *= -1./V(fN,fN);
+  x = ElemMult(x, fVecXini);
+
+  //  TMatrixD VAB = V.GetSub(0,fN-1,fN,fN);
+  // TMatrixD VBB = V.GetSub(fN,fN,fN,fN);
+  // TMatrixD VBBinv(TMatrixD::kInverted, VBB);
+
+  // VAB.Print();
+  // VBBinv.Print();
+
+  // TMatrixD X(VAB, TMatrixD::kMult, VBBinv);
+  // X *= -1.;
+
+  TH1D* h = new TH1D("hTLS", "hTLS", fN, fTrueX1, fTrueX2);
+  for (int j=0; j<fN; j++)
+    h->SetBinContent(j+1, x(j));
+
+  return h;
+}
+
 UnfoldingResult
 UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations)
 {
