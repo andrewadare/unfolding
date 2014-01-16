@@ -6,17 +6,16 @@ void StressTestGSVD()
   UnfoldingUtils uu;
   TRandom3 ran;
 
-  // ran.SetSeed(0);
+  ran.SetSeed(0);
   
-  int t=1, ntests=100;
+  int t=1, ntests=5;
   while (t<=ntests) {
 
-    int p = 3 + ran.Integer(20);
-    int n = p + ran.Integer(20);
-    int m = n + ran.Integer(20);
+    int p = 2 + ran.Integer(5);
+    int n = p + ran.Integer(5);
+    int m = n + ran.Integer(5);
 
-    //    int m=6, n=4, p=3;
-    //    int m=10, n=8, p=3;
+    m=    n = p;
 
     Printf("\n\nGSVD Test %d: m=%d, n=%d, p=%d.", t,m,n,p);
 
@@ -45,8 +44,8 @@ void StressTestGSVD()
     // A.Print();
     // B.Print();
 
-    // g.C.Print();
-    // g.S.Print();
+    g.C.Print();
+    g.S.Print();
 
     // cout << "U*C*XT: ";  upper.Print();
     // cout << "V*S*XT: ";  lower.Print();
