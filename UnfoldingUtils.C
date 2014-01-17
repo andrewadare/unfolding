@@ -1878,13 +1878,10 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
   TMatrixD A = GetA(opt);
   TVectorD b = Getb(opt);
   TVectorD xini(fVecXini);
-//  double x1 = fTrueX1, x2 = fTrueX2;
   if (hA) A = Hist2Matrix(hA);
   if (hb) b = Hist2Vec(hb);
   if (hXini)
   {
-    // x1 = hXini->GetXaxis()->GetXmin();
-    // x2 = hXini->GetXaxis()->GetXmax();
     xini = Hist2Vec(hXini);
   }
 
