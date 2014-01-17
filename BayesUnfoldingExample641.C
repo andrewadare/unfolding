@@ -1,5 +1,8 @@
-#include "MatrixUtils.C"     // https://github.com/andrewadare/utils.git
-#include "UtilFns.C"         // https://github.com/andrewadare/utils.git
+
+// Copy or symlink the following files to the current directory:
+// They are available at https://github.com/andrewadare/utils.git
+#include "MatrixUtils.C"
+#include "UtilFns.C"
 
 // Example 6.4.1 from "Fully Bayesian Unfolding" arXiv:1201.4612v4
 
