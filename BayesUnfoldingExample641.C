@@ -1,3 +1,6 @@
+#include "UtilFns.C"      // https://github.com/andrewadare/utils.git
+#include "MatrixUtils.C"  // https://github.com/andrewadare/utils.git
+
 // Example 6.4.1 from "Fully Bayesian Unfolding" arXiv:1201.4612v4
 
 bool doUniformSampling = false;
@@ -22,8 +25,8 @@ int nFlatBins = 20;
 double apar = 0.5;
 double bpar = 0.1;
 
-TGraphErrors* DataPoint(TH1* hD, TH1* hp, int t, double y=-1);
-TGraphErrors* TruePoint(TH1* hT, TH1* hp, int t, double y=-1);
+TGraphErrors *DataPoint(TH1 *hD, TH1 *hp, int t, double y=-1);
+TGraphErrors *TruePoint(TH1 *hT, TH1 *hp, int t, double y=-1);
 
 void BayesUnfoldingExample641()
 {
@@ -32,57 +35,64 @@ void BayesUnfoldingExample641()
 
   if (gSystem->Getenv("TMPDIR"))
     gSystem->SetBuildDir(gSystem->Getenv("TMPDIR"));
-  gROOT->LoadMacro("UtilFns.C");
+
+  // UnfoldingUtils is used for the AtlasDiJetMass function.
+  // It also contains the TestProblem struct definition.
   gROOT->LoadMacro("UnfoldingUtils.C+");
+  UnfoldingUtils uu;
+
+  // MCMC sampler and supporting code
   gROOT->LoadMacro("BayesMCFns.C+");
 
-  UnfoldingUtils uu;
   TRandom3 ran;
-  TStopwatch watch; // Starts the watch. Start() would reset it.
+  TStopwatch watch; // Watch starts at construction. Start() would reset it.
 
-  // Set up the problem  
+  // Set up the problem
   double bins[Nt+1] = {0};
-  for (int j=0; j<=Nt; j++) 
+  for (int j=0; j<=Nt; j++)
     bins[j] = 500*TMath::Exp(0.15*j);
 
   TestProblem testprob = uu.AtlasDiJetMass(Nt, Nr, bins, bins, 
-					   apar, bpar, nevts, evtWeight);
-  TH2D* hM   = testprob.Response ;
-  TH1D* hT   = testprob.xTruth   ;
-  TH1D* hTmc = testprob.xTruthEst;
-  TH1D* hMt  = testprob.xIni     ;
-  TH1D* hD   = testprob.bNoisy   ;
-  TH1D* heff = testprob.eff      ;
+                                           apar, bpar, nevts, evtWeight);
+  TH2D *hM   = testprob.Response ;
+  TH1D *hT   = testprob.xTruth   ;
+  TH1D *hTmc = testprob.xTruthEst;
+  TH1D *hMt  = testprob.xIni     ;
+  TH1D *hD   = testprob.bNoisy   ;
+  TH1D *heff = testprob.eff      ;
   SetHistProps(hT,kRed+2,kNone,kRed+2);
   SetHistProps(hTmc,kRed,kNone,kRed);
   SetHistProps(hD,kBlack,kNone,kBlack,kFullCircle,1.5);
 
-  TMatrixD M   = uu.Hist2Matrix(hM);
-  TVectorD T   = uu.Hist2Vec(hT);   // \hat{T}
-  TVectorD Tmc = uu.Hist2Vec(hTmc); // \tilde{T}
-  TVectorD D   = uu.Hist2Vec(hD);
-  TVectorD eff = uu.Hist2Vec(heff);
-  TVectorD Pt  = uu.ElemDiv(uu.Hist2Vec(hMt), eff); // P(t)
-  TMatrixD Prt = uu.DivRowsByVector(M, Pt);  // P(r|t)
+  TMatrixD M   = MatrixUtils::Hist2Matrix(hM);
+  TVectorD T   = MatrixUtils::Hist2Vec(hT);   // \hat{T}
+  TVectorD Tmc = MatrixUtils::Hist2Vec(hTmc); // \tilde{T}
+  TVectorD D   = MatrixUtils::Hist2Vec(hD);
+  TVectorD eff = MatrixUtils::Hist2Vec(heff);
+  TVectorD Pt  = MatrixUtils::ElemDiv(MatrixUtils::Hist2Vec(hMt), eff); // P(t)
+  TMatrixD Prt = MatrixUtils::DivRowsByVector(M, Pt);  // P(r|t)
 
   // Compute initial sampling volume and do MCMC sampling
-  TGraphAsymmErrors* box = HyperBox(hTmc);
+  TGraphAsymmErrors *box = HyperBox(hTmc);
   SetGraphProps(box, kGreen+2, kNone, kSpring, kFullSquare, 1.0);
-  //  TTree* tmcmc = SampleMetropolis(nMcmcSamples, D, Prt, box);
-  
-  double alpha = 0.; // No regularization
-  TTree* tmcmc = SampleMH(nMcmcSamples, nMcmcSamples/5, D, Prt, box, alpha, Tmc);
+
+  double alpha = 0.; // No regularization.
+  TTree *tmcmc = SampleMH(nMcmcSamples, nMcmcSamples/5,
+                          D, Prt, box, alpha, Tmc);
 
   // Create marginal prob. distributions from MCMC
-  std::cout << Form("Marginalizing parameters from Markov chain...") << std::flush;
-  TH1D* hMCMC[Nt];
-  for (int t=0; t<Nt; t++) {
+  std::cout << Form("Marginalizing parameters from Markov chain...")
+            << std::flush;
+
+  TH1D *hMCMC[Nt];
+  for (int t=0; t<Nt; t++)
+  {
     double tlo = box->GetY()[t] - box->GetEYlow()[t];
     double thi = box->GetY()[t] + box->GetEYhigh()[t];
     hMCMC[t] = new TH1D(Form("hMCMC%d",t),"",nMcmcBins, tlo, thi);
     hMCMC[t]->SetTitle(Form("MCMC - point %d;"
-			    "entries;"
-			    "Marginal posterior probability",t));
+                            "entries;"
+                            "Marginal posterior probability",t));
 
     // Marginalize with unit weight when using MCMC, weight by
     // likelihood if sampling was uniform.
@@ -93,21 +103,24 @@ void BayesUnfoldingExample641()
   Printf("Done marginalizing MCMC.");
 
   // Now compute reduced sampling volume, and do uniform sampling
-  TGraphAsymmErrors* rbox = ReducedSamplingVolume(hMCMC, box);
+  TGraphAsymmErrors *rbox = ReducedSamplingVolume(hMCMC, box);
   SetGraphProps(rbox, kBlack, kNone, kNone, kFullSquare, 1.0);
-  TH1D* hFlat[Nt];
-  if (doUniformSampling) {
-    TTree* tflat = SampleUniform(nFlatSamples, D, Prt, rbox);
-    std::cout << Form("Marginalizing parameters from uniform volume...") << std::flush;
-    
-    for (int t=0; t<Nt; t++) {
+  TH1D *hFlat[Nt];
+  if (doUniformSampling)
+  {
+    TTree *tflat = SampleUniform(nFlatSamples, D, Prt, rbox);
+    std::cout << Form("Marginalizing parameters from uniform volume...")
+              << std::flush;
+
+    for (int t=0; t<Nt; t++)
+    {
       double tlo = rbox->GetY()[t] - rbox->GetEYlow()[t];
       double thi = rbox->GetY()[t] + rbox->GetEYhigh()[t];
       hFlat[t] = new TH1D(Form("hFlat%d",t),"",nFlatBins, tlo, thi);
       hFlat[t]->SetTitle(Form("Uniform sampling - point %d;"
-			      "dijet mass (GeV/c^{2});"
-			      "Marginal posterior probability",t));
-      
+                              "dijet mass (GeV/c^{2});"
+                              "Marginal posterior probability",t));
+
       tflat->Draw(Form("T%d >> hFlat%d",t,t), "L", "goff");
       hFlat[t]->Scale(1./hFlat[t]->Integral(1,nFlatBins));
       SetHistProps(hFlat[t], kBlack, kOrange, kBlack, kFullCircle, 1.0);
@@ -116,47 +129,52 @@ void BayesUnfoldingExample641()
   }
 
   // Unfolded spectrum from MCMC
-  TGraphErrors* unf1 = new TGraphErrors();
+  TGraphErrors *unf1 = new TGraphErrors();
   SetGraphProps(unf1, kBlue, kNone, kBlue, kOpenSquare, 1.5);
   unf1->SetLineWidth(2);
-  for (int t=0; t<Nt; t++) {
+  for (int t=0; t<Nt; t++)
+  {
     BayesianCredibilityInterval bci = GetBCI(hMCMC[t], 0.68);
     unf1->SetPoint(t, hD->GetBinCenter(t+1), bci.u);
-    unf1->SetPointError(t, 0.48*hD->GetBinWidth(t+1), bci.du);    
+    unf1->SetPointError(t, 0.48*hD->GetBinWidth(t+1), bci.du);
   }
 
   // Unfolded spectrum from uniform sampling after volume reduction
-  TGraphErrors* unf2 = 0;
-  if (doUniformSampling) {
+  TGraphErrors *unf2 = 0;
+  if (doUniformSampling)
+  {
     unf2 = new TGraphErrors();
     SetGraphProps(unf2, kRed, kNone, kRed, kOpenSquare, 1.5);
     unf2->SetLineWidth(2);
-    
-    for (int t=0; t<Nt; t++) {
+
+    for (int t=0; t<Nt; t++)
+    {
       BayesianCredibilityInterval bci = GetBCI(hFlat[t], 0.68);
       unf2->SetPoint(t, hD->GetBinCenter(t+1), bci.u);
-      unf2->SetPointError(t, 0.47*hD->GetBinWidth(t+1), bci.du);    
+      unf2->SetPointError(t, 0.47*hD->GetBinWidth(t+1), bci.du);
     }
   }
-  
+
 
   Printf("Drawing results...");
   DrawObject(hM,"colz");  gPad->SetLogx();  gPad->SetLogy();  gPad->SetLogz();
   DrawObject(heff,"");
 
   // Draw marginal dists. from MCMC
-  for (int t=0; t<Nt; t++) {
+  for (int t=0; t<Nt; t++)
+  {
 
     hMCMC[t]->Scale(1./hMCMC[t]->Integral(1,nMcmcBins,"width"));
     DrawObject(hMCMC[t], "", Form("post_%d", t), 0);
 
-    if (doUniformSampling) {
+    if (doUniformSampling)
+    {
       hFlat[t]->Scale(1./hFlat[t]->Integral(1,nFlatBins,"width"));
       hFlat[t]->Draw("same");
     }
-    
-    TGraphErrors* dataPoint = DataPoint(hD, hMCMC[t], t);
-    TGraphErrors* truePoint = TruePoint(hT, hMCMC[t], t);
+
+    TGraphErrors *dataPoint = DataPoint(hD, hMCMC[t], t);
+    TGraphErrors *truePoint = TruePoint(hT, hMCMC[t], t);
     dataPoint->Draw("ep same");
     truePoint->Draw("p same");
   }
@@ -174,20 +192,21 @@ void BayesUnfoldingExample641()
   unf1->Draw("ep same");
   if (unf2)
     unf2->Draw("ep same");
-  
+
   Printf("All done.");
   watch.Stop();
   watch.Print();
   return;
 }
 
-TGraphAsymmErrors* ReducedSamplingVolume(TH1D** hmp, TGraphAsymmErrors* old)
+TGraphAsymmErrors *ReducedSamplingVolume(TH1D **hmp, TGraphAsymmErrors *old)
 {
-  TGraphAsymmErrors* g = (TGraphAsymmErrors*)old->Clone();
+  TGraphAsymmErrors *g = (TGraphAsymmErrors *)old->Clone();
 
-  for (int t=0; t<g->GetN(); t++) {
+  for (int t=0; t<g->GetN(); t++)
+  {
 
-    if (!hmp[t]) 
+    if (!hmp[t])
       Error("","!hmp[%d]",t);
 
     BayesianCredibilityInterval bci = GetBCI(hmp[t], 0.99);
@@ -195,27 +214,27 @@ TGraphAsymmErrors* ReducedSamplingVolume(TH1D** hmp, TGraphAsymmErrors* old)
     g->SetPointEYlow(t, bci.du);
     g->SetPointEYhigh(t, bci.du);
   }
-  return g;  
+  return g;
 }
 
-TGraphErrors* DataPoint(TH1* hD, TH1* hp, int t, double y)
+TGraphErrors *DataPoint(TH1 *hD, TH1 *hp, int t, double y)
 {
   double ymin = hp->GetMinimum();
   double ymax = hp->GetMaximum();
   double yDrawData = y>0? y : ymin + 0.1*(ymax-ymin);
-  TGraphErrors* dataPoint = new TGraphErrors();
+  TGraphErrors *dataPoint = new TGraphErrors();
   dataPoint->SetPoint(0, hD->GetBinContent(t+1), yDrawData);
   dataPoint->SetPointError(0, hD->GetBinError(t+1), 0.0);
   SetGraphProps(dataPoint, kBlack, kNone, kBlack, kFullCircle, 1.0);
   return dataPoint;
 }
 
-TGraphErrors* TruePoint(TH1* hT, TH1* hp, int t, double y)
+TGraphErrors *TruePoint(TH1 *hT, TH1 *hp, int t, double y)
 {
   double ymin = hp->GetMinimum();
   double ymax = hp->GetMaximum();
   double yDrawData = y>0? y : ymin + 0.1*(ymax-ymin);
-  TGraphErrors* truePoint = new TGraphErrors();
+  TGraphErrors *truePoint = new TGraphErrors();
   truePoint->SetPoint(0, hT->GetBinContent(t+1), yDrawData);
   SetGraphProps(truePoint, kRed+2, kGray, kRed+2, kOpenCircle, 1.5);
   return truePoint;
