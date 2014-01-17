@@ -1,5 +1,5 @@
-#include "UtilFns.C"      // https://github.com/andrewadare/utils.git
-#include "MatrixUtils.C"  // https://github.com/andrewadare/utils.git
+#include "MatrixUtils.C"     // https://github.com/andrewadare/utils.git
+#include "UtilFns.C"         // https://github.com/andrewadare/utils.git
 
 // Example 6.4.1 from "Fully Bayesian Unfolding" arXiv:1201.4612v4
 
@@ -27,6 +27,7 @@ double bpar = 0.1;
 
 TGraphErrors *DataPoint(TH1 *hD, TH1 *hp, int t, double y=-1);
 TGraphErrors *TruePoint(TH1 *hT, TH1 *hp, int t, double y=-1);
+TGraphAsymmErrors *ReducedSamplingVolume(TH1D **hmp, TGraphAsymmErrors *old);
 
 void BayesUnfoldingExample641()
 {
@@ -36,12 +37,7 @@ void BayesUnfoldingExample641()
   if (gSystem->Getenv("TMPDIR"))
     gSystem->SetBuildDir(gSystem->Getenv("TMPDIR"));
 
-  // UnfoldingUtils is used for the AtlasDiJetMass function.
-  // It also contains the TestProblem struct definition.
-  gROOT->LoadMacro("UnfoldingUtils.C+");
-  UnfoldingUtils uu;
-
-  // MCMC sampler and supporting code
+  gROOT->LoadMacro("TestProblems.C+");
   gROOT->LoadMacro("BayesMCFns.C+");
 
   TRandom3 ran;
@@ -52,8 +48,8 @@ void BayesUnfoldingExample641()
   for (int j=0; j<=Nt; j++)
     bins[j] = 500*TMath::Exp(0.15*j);
 
-  TestProblem testprob = uu.AtlasDiJetMass(Nt, Nr, bins, bins, 
-                                           apar, bpar, nevts, evtWeight);
+  TestProblem testprob = AtlasDiJetMass(Nt, Nr, bins, bins,
+                                        apar, bpar, nevts, evtWeight);
   TH2D *hM   = testprob.Response ;
   TH1D *hT   = testprob.xTruth   ;
   TH1D *hTmc = testprob.xTruthEst;
