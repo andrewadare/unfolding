@@ -17,19 +17,12 @@
 #include "TMath.h"
 #include "TTree.h"
 #include "TRandom3.h"
+
 #include <iostream>
+
 
 struct BayesianCredibilityInterval
 {
-  double u1, u2;
-  double u;  // Calculated as (u1+u2)/2
-  double du; // Calculated as (u2-u1)/2
-
-  int bin, bin1, bin2;
-  double probRequested, probComputed;
-
-  TGraphErrors cdf;
-
   BayesianCredibilityInterval() :
     u1(0), u2(0), u(0), du(0),
     bin(0), bin1(0), bin2(0),
@@ -39,6 +32,16 @@ struct BayesianCredibilityInterval
     u1(0), u2(0), u(0), du(0),
     bin(0), bin1(0), bin2(0),
     probRequested(p), probComputed(0) {}
+
+  double u1, u2;
+  double u;  // Calculated as (u1+u2)/2
+  double du; // Calculated as (u2-u1)/2
+
+  int bin, bin1, bin2;
+  double probRequested, probComputed;
+
+  TGraphErrors cdf;
+
 
 };
 
@@ -57,6 +60,8 @@ double LogGaussian(double x, double mu, double sigma, bool norm);
 double LogFactorial(int n);
 void PrintPercentDone(int i, int N, int k);  // Print i/N (in %) every k%.
 BayesianCredibilityInterval GetBCI(TH1 *hp, double probFrac);
+
+
 
 TGraphAsymmErrors *
 HyperBox(TH1D *h)
@@ -94,7 +99,8 @@ SampleUniform(int nSamples, TVectorD &D, TMatrixD &Prt, TGraphAsymmErrors *box)
   TVectorD trialT(Nt);
   TVectorD trialR(D.GetNrows());
 
-  TTree *ptree = new TTree("tflat", "posterior probability from uniform sampling");
+  TTree *ptree = new TTree("tflat", 
+                           "posterior probability from uniform sampling");
   for (int t=0; t<Nt; t++)
   {
     ptree->Branch(Form("T%d",t), &Tpoint[t], Form("T%d/F",t));
@@ -456,4 +462,3 @@ PrintPercentDone(int i, int N, int k)
     std::cout << Form("  %d%%\r", percent) << std::flush;
   return;
 }
-
