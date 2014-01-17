@@ -29,7 +29,7 @@ using std::endl;
 
 ClassImp(UnfoldingUtils);
 
-UnfoldingUtils::UnfoldingUtils() : 
+UnfoldingUtils::UnfoldingUtils() :
   fVerbosity(1),
   fM(0),
   fN(0),
@@ -52,12 +52,12 @@ UnfoldingUtils::UnfoldingUtils() :
 {
 }
 
-UnfoldingUtils::UnfoldingUtils(TH2D* hA, 
-			       TH1D* hMeas, 
-			       TH2D* hMeasCov, 
-			       TH1D* hXini, 
-			       TH1D* hXtrue, 
-			       TH1D* hEff) :
+UnfoldingUtils::UnfoldingUtils(TH2D *hA,
+                               TH1D *hMeas,
+                               TH2D *hMeasCov,
+                               TH1D *hXini,
+                               TH1D *hXtrue,
+                               TH1D *hEff) :
   fVerbosity(1),
   fM(0),
   fN(0),
@@ -85,7 +85,8 @@ UnfoldingUtils::UnfoldingUtils(TH2D* hA,
   fMeasX1 = fHistA->GetXaxis()->GetXmin();
   fMeasX2 = fHistA->GetXaxis()->GetXmax();
 
-  if (!BinningOk()) {
+  if (!BinningOk())
+  {
     Error("UnfoldingUtils::UnfoldingUtils()", "Binning problem");
     gSystem->Exit(-1);
   }
@@ -93,7 +94,7 @@ UnfoldingUtils::UnfoldingUtils(TH2D* hA,
   ComputeRescaledSystem();
 }
 
-void 
+void
 UnfoldingUtils::ComputeRescaledSystem()
 {
   // Matrix and vector members
@@ -113,60 +114,66 @@ UnfoldingUtils::ComputeRescaledSystem()
   fMatA = Hist2Matrix(fHistA);
   fVecb = Hist2Vec(fHistMeas);
 
-  if (fHistXini) {
+  if (fHistXini)
+  {
     fVecXini = Hist2Vec(fHistXini);
   }
-  else {
+  else
+  {
     fVecXini = Ones(fN);
-    fHistXini = Vec2Hist(fVecXini, fTrueX1, fTrueX2, 
-  			 "fHistXini", "Default x^{ini} (1.0)");
+    fHistXini = Vec2Hist(fVecXini, fTrueX1, fTrueX2,
+                         "fHistXini", "Default x^{ini} (1.0)");
   }
   if (fHistXtrue)
     fVecXtrue = Hist2Vec(fHistXtrue);
 
   if (!fHistEff)
     fHistEff = Vec2Hist(Ones(fN), fTrueX1, fTrueX2,
-			"fHistEff", "Default efficiency (1.0)");
+                        "fHistEff", "Default efficiency (1.0)");
   if (!fHistPrior)
     fHistPrior = Vec2Hist(Ones(fN), fTrueX1, fTrueX2,
-			  "fHistPrior", "Default prior (1.0)");
+                          "fHistPrior", "Default prior (1.0)");
   // Probability matrix Ahat
-  if (!fHistAProb) {
-    fHistAProb = (TH2D*) fHistA->Clone("fHistAProb");
+  if (!fHistAProb)
+  {
+    fHistAProb = (TH2D *) fHistA->Clone("fHistAProb");
     NormalizeXSum(fHistAProb, fHistEff);
     fHistAProb->SetTitle("Probability matrix #hat{A}");
   }
   fMatAhat = Hist2Matrix(fHistAProb);
-  
+
   // Data uncertainty
   for (int i=0; i<fM; i++)
     fVecbErr(i) = fHistMeas->GetBinError(i+1);
-  
+
   // Create rescaled (~) quantities
-  if (fHistMeasCov) {
-    
+  if (fHistMeasCov)
+  {
+
     // If b has nontrivial covariance
     fMatB = Hist2Matrix(fHistMeasCov);
-    
+
     // Eigendecomp: B = QRQ' where R_{ij} = r_i^2 \delta_{ij}
     // See eq. (33) (NIM A 372 (1996) 469-481)
-    TDecompSVD svd(fMatB); 
+    TDecompSVD svd(fMatB);
     TMatrixD Q = svd.GetU();   // Q=U=V if B is symm. & pos.-semidef
     TVectorD R = svd.GetSig(); // R(i,i)
     TVectorD r(fM);
-    for (int i=0; i<fM; i++) 
+    for (int i=0; i<fM; i++)
       r(i) = TMath::Sqrt(R(i));
-    
+
     fMatATilde = DivColsByVector(Q*fMatA, r);
     fVecbTilde = ElemDiv(Q*fVecb, r);
-    
+
     Info("UnfoldingUtils::ComputeRescaledSystem()",
-	 "Inverting covariance matrix...");
+         "Inverting covariance matrix...");
     fMatBinv = MoorePenroseInverse(fMatB);
   }
-  else { 
+  else
+  {
     // The usual case - b has indep. errors
-    for (int i=0; i<fM; i++) {
+    for (int i=0; i<fM; i++)
+    {
       double var = fVecbErr(i)*fVecbErr(i);
       fMatB(i,i) = var;
       fMatBinv(i,i) = (var > 0) ? 1./var : 0;
@@ -174,17 +181,17 @@ UnfoldingUtils::ComputeRescaledSystem()
     fMatATilde = DivColsByVector(fMatA, fVecbErr);
     fVecbTilde = ElemDiv(fVecb, fVecbErr);
     fHistMeasCov = Matrix2Hist(fMatB, "fHistMeasCov",
-			       fMeasX1,fMeasX2,fMeasX1,fMeasX2);
+                               fMeasX1,fMeasX2,fMeasX1,fMeasX2);
   }
 
   fHistATilde = Matrix2Hist(fMatATilde, "fHistATilde",
-			    fMeasX1,fMeasX2,fTrueX1,fTrueX2);
+                            fMeasX1,fMeasX2,fTrueX1,fTrueX2);
   fHistATilde->SetTitle("covariance-scaled matrix #tilde{A}");
 
-  fHistbTilde = Vec2Hist(fVecbTilde, fMeasX1, fMeasX2, 
-			 "fHistbTilde", "Scaled measured distribution");
+  fHistbTilde = Vec2Hist(fVecbTilde, fMeasX1, fMeasX2,
+                         "fHistbTilde", "Scaled measured distribution");
 
-  for (int i=0;i<fM;i++)
+  for (int i=0; i<fM; i++)
     fHistbTilde->SetBinError(i+1, 1.0);
 
   fSmoothingWeight = Ones(fN);
@@ -198,29 +205,34 @@ UnfoldingUtils::BinningOk()
 {
   // Check for binning incompatibilities
   bool isok = true;
-  
+
   int nMeas = fHistMeas->GetNbinsX(); // Must equal fM
-  if (nMeas != fM) {
-    gROOT->Warning("UnfoldingUtils::BinningOk()", 
-		   "Meas. bin mismatch: hMeas %d, TH2 (x-axis) %d",
-		   nMeas, fM);
+  if (nMeas != fM)
+  {
+    gROOT->Warning("UnfoldingUtils::BinningOk()",
+                   "Meas. bin mismatch: hMeas %d, TH2 (x-axis) %d",
+                   nMeas, fM);
     isok = false;
   }
-  if (fHistXini) {
+  if (fHistXini)
+  {
     int nXini = fHistXini->GetNbinsX(); // Must equal fN
-    if (nXini != fN) {
-      gROOT->Warning("UnfoldingUtils::BinningOk()", 
-		     "True bin mismatch: x^ini %d, TH2 (y-axis) %d",
-		     nXini, fN);
+    if (nXini != fN)
+    {
+      gROOT->Warning("UnfoldingUtils::BinningOk()",
+                     "True bin mismatch: x^ini %d, TH2 (y-axis) %d",
+                     nXini, fN);
       isok = false;
     }
   }
-  if (fHistXtrue) {
+  if (fHistXtrue)
+  {
     int nXtrue = fHistXtrue->GetNbinsX(); // Must equal fN
-    if (nXtrue != fN) {
-      gROOT->Warning("UnfoldingUtils::BinningOk()", 
-		     "True bin mismatch: hXtrue %d, TH2 (y-axis) %d",
-		     nXtrue, fN);
+    if (nXtrue != fN)
+    {
+      gROOT->Warning("UnfoldingUtils::BinningOk()",
+                     "True bin mismatch: hXtrue %d, TH2 (y-axis) %d",
+                     nXtrue, fN);
       isok = false;
     }
   }
@@ -231,7 +243,8 @@ TString
 UnfoldingUtils::Algorithm(int type)
 {
   TString s;
-  switch (type) {
+  switch (type)
+  {
   case kSVDAlgo:       s = "SVD";      break;
   case kGSVDAlgo:      s = "GSVD";     break;
   case kRichLucyAlgo:  s = "RichLucy"; break;
@@ -242,23 +255,23 @@ UnfoldingUtils::Algorithm(int type)
   return s;
 }
 
-void 
+void
 UnfoldingUtils::SetTrueRange(double x1, double x2)
 {
-  fTrueX1 = x1; 
+  fTrueX1 = x1;
   fTrueX2 = x2;
 }
 
 void
-UnfoldingUtils::SetPrior(TH1D* h)
+UnfoldingUtils::SetPrior(TH1D *h)
 {
-  fHistPrior = (TH1D*)h->Clone("fHistPrior");
+  fHistPrior = (TH1D *)h->Clone("fHistPrior");
 }
 
-void 
+void
 UnfoldingUtils::SetMeasRange(double x1, double x2)
 {
-  fMeasX1 = x1; 
+  fMeasX1 = x1;
   fMeasX2 = x2;
 }
 
@@ -282,28 +295,28 @@ UnfoldingUtils::Getb(TString opt)
     return fVecb;
 }
 
-TH1D*
-UnfoldingUtils::GetXTrueHist() 
+TH1D *
+UnfoldingUtils::GetXTrueHist()
 {
   if (!fHistXtrue)
     Error("UnfoldingUtils::GetXTrueHist()",
-	  "No xtrue histogram assigned for this problem");
+          "No xtrue histogram assigned for this problem");
   return fHistXtrue;
 }
 
-Double_t 
+Double_t
 UnfoldingUtils::GetbErrNorm()
 {
   return TMath::Sqrt(fVecbErr*fVecbErr);
 }
 
-Double_t 
+Double_t
 UnfoldingUtils::GetbErrMean()
 {
   return fVecbErr.Sum()/fVecbErr.GetNrows();
 }
 
-Double_t 
+Double_t
 UnfoldingUtils::GetbErrRMS()
 {
   TVectorD e2 = ElemMult(fVecbErr,fVecbErr);
@@ -311,8 +324,8 @@ UnfoldingUtils::GetbErrRMS()
 }
 
 
-SVDResult 
-UnfoldingUtils::SVDAnalysis(TH2* hA, TH1* hb, TString opt)
+SVDResult
+UnfoldingUtils::SVDAnalysis(TH2 *hA, TH1 *hb, TString opt)
 {
   // Decompose A as U*Sigma*V' and study the components. If A is m x
   // n, then U is a column-orthogonal m x n matrix, Sigma is a
@@ -330,20 +343,23 @@ UnfoldingUtils::SVDAnalysis(TH2* hA, TH1* hb, TString opt)
   TVectorD b = Getb(opt);
 
   // Or, use passed-in histograms
-  if (hA) {
+  if (hA)
+  {
     A.ResizeTo(hA->GetNbinsX(), hA->GetNbinsY());
     A = Hist2Matrix(hA);
   }
-  if (hb) {
+  if (hb)
+  {
     b.ResizeTo(hb->GetNbinsX());
     b = Hist2Vec(hb);
   }
-  if (b.GetNrows()==0) {
+  if (b.GetNrows()==0)
+  {
     if (A.GetNrows())
       b.ResizeTo(A.GetNrows());
     else
-      Warning("UnfoldingUtils::SVDAnalysis()", 
-	      "Unspecified dimension of b vector");
+      Warning("UnfoldingUtils::SVDAnalysis()",
+              "Unspecified dimension of b vector");
   }
 
   TDecompSVD decomp(A);
@@ -356,19 +372,19 @@ UnfoldingUtils::SVDAnalysis(TH2* hA, TH1* hb, TString opt)
   if (utb.GetNrows() != sig.GetNrows())
     utb.ResizeTo(sig);
 
-  for (int i=0; i<ns; i++) 
-    utb(i) = TMath::Abs(utb(i)); 
+  for (int i=0; i<ns; i++)
+    utb(i) = TMath::Abs(utb(i));
   TVectorD svc = ElemDiv(utb, sig); // SVD coefficients (abs. value)
-  
-  result.sigma = Vec2Hist(sig, 0., ns, Form("sig%d",id), 
-			  "#sigma_{i} ");
+
+  result.sigma = Vec2Hist(sig, 0., ns, Form("sig%d",id),
+                          "#sigma_{i} ");
   result.UTb   = Vec2Hist(utb, 0., ns, Form("utb%d",id),
-			  "#||{u^{T}_{i}#upointb} ");
+                          "#||{u^{T}_{i}#upointb} ");
   result.coeff = Vec2Hist(svc, 0., ns, Form("svc%d",id),
-			  "#||{u^{T}_{i}#upointb} / #sigma_{i} ");
+                          "#||{u^{T}_{i}#upointb} / #sigma_{i} ");
   result.U     = Matrix2Hist(U, Form("U_svd_%d",id),
-			     0, ns, 0, ns);
-  
+                             0, ns, 0, ns);
+
   SetTH1Props(result.sigma, kBlack, 0, kBlack, kFullCircle, 1.0);
   SetTH1Props(result.UTb,   kBlue, 0, kBlue, kFullSquare, 1.0);
   SetTH1Props(result.coeff, kRed, 0, kRed, kOpenSquare, 1.0);
@@ -376,10 +392,11 @@ UnfoldingUtils::SVDAnalysis(TH2* hA, TH1* hb, TString opt)
   return result;
 }
 
-GSVDResult* 
-UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TString opt)
+GSVDResult *
+UnfoldingUtils::GSVDAnalysis(TMatrixD &L, double lambda, TH2 *hA, TH1 *hb,
+                             TString opt)
 {
-  // Decompose A, L jointly as A = U*C*X', L = V*S*X'. 
+  // Decompose A, L jointly as A = U*C*X', L = V*S*X'.
   // If A is m x n, and L is p x n, and A has full rank,
   // U  is m x n
   // V  is p x p
@@ -390,19 +407,21 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   // respectively, and have length p.
 
   static int id = 0; id++;
-  GSVDResult* gsvd = new GSVDResult();
+  GSVDResult *gsvd = new GSVDResult();
 
-  // Use stored members: 
+  // Use stored members:
   // Select A, \hat{A}, or \tilde{A} ("", "^", or "~")
   TMatrixD A = GetA(opt);
   TVectorD b = Getb(opt);
 
   // Or, use passed-in histograms (supercedes opt)
-  if (hA) {
+  if (hA)
+  {
     A.ResizeTo(hA->GetNbinsX(), hA->GetNbinsY());
     A = Hist2Matrix(hA);
   }
-  if (hb) {
+  if (hb)
+  {
     b.ResizeTo(hb->GetNbinsX());
     b = Hist2Vec(hb);
   }
@@ -421,10 +440,12 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
 
   // Tikhonov filter factors
   TVectorD f(n);
-  for (int i=0; i<n; i++) {
+  for (int i=0; i<n; i++)
+  {
 
-    if (i >= n-p) {
-      double g2 = g.gamma(i)*g.gamma(i); 
+    if (i >= n-p)
+    {
+      double g2 = g.gamma(i)*g.gamma(i);
       f(i) = g2 / (g2 + lambda*lambda);
     }
     else
@@ -435,7 +456,8 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   // of A. Since C is diagonal, save time by computing its
   // pseudoinverse without using SVD.
   TMatrixD FCd(n,n);
-  for (int i=0; i<n; i++) {
+  for (int i=0; i<n; i++)
+  {
     double val = g.C(i,i);
     FCd(i,i) = (val > 0.) ? f(i)/val : 0.;
   }
@@ -444,13 +466,13 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
 
   // Covariance matrices:
   // Cov(w) = Ap*B*Ap'
-  // Cov(x)_ik = xini_i Cov(w)_ik xini_k 
+  // Cov(x)_ik = xini_i Cov(w)_ik xini_k
   gsvd->covw.ResizeTo(n,n);
   gsvd->covx.ResizeTo(n,n);
   gsvd->covxInv.ResizeTo(n,n);
 
   TMatrixD B(fMatB);
-  if (opt.Contains("~")) 
+  if (opt.Contains("~"))
     B.UnitMatrix();
   gsvd->covb.ResizeTo(m,m);
   gsvd->covb = B;
@@ -458,24 +480,29 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   // Compute cov(x)
   TMatrixD tmp(B, TMatrixD::kMultTranspose, gsvd->Ap);
   gsvd->covw = gsvd->Ap * tmp;
-  for (int i=0; i<n; i++) {
-    for (int k=0; k<n; k++) {
+  for (int i=0; i<n; i++)
+  {
+    for (int k=0; k<n; k++)
+    {
       gsvd->covx(i,k) = fVecXini(i) * gsvd->covw(i,k) * fVecXini(k);
     }
   }
 
   // Compute cov(x)^-1 (without using cov(x), see Hocker eq. 53)
   double AAjk = 0;
-  for (int j=0; j<n; j++) {
-    for (int k=0; k<n; k++) {
+  for (int j=0; j<n; j++)
+  {
+    for (int k=0; k<n; k++)
+    {
       AAjk = 0;
-      for (int i=0; i<n; i++) {
-	AAjk += A(i,j)*A(i,k);
+      for (int i=0; i<n; i++)
+      {
+        AAjk += A(i,j)*A(i,k);
       }
       if (fVecXini(j)==0 || fVecXini(k)==0)
-	gsvd->covxInv(j,k) = 0;
+        gsvd->covxInv(j,k) = 0;
       else
-	gsvd->covxInv(j,k) = AAjk/fVecXini(j)/fVecXini(k);
+        gsvd->covxInv(j,k) = AAjk/fVecXini(j)/fVecXini(k);
     }
   }
 
@@ -510,38 +537,43 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   gsvd->b.ResizeTo(b);      gsvd->b = b;
 
   gsvd->UHist  = Matrix2Hist(g.U, Form("U_gsvd_%d",id),
-			     fTrueX1, fTrueX2,0,n);
+                             fTrueX1, fTrueX2,0,n);
   gsvd->XHist  = Matrix2Hist(X, Form("X_gsvd_%d",id),
-			     fTrueX1, fTrueX2,0,n);
+                             fTrueX1, fTrueX2,0,n);
   gsvd->wregHist = Vec2Hist(wreg, fTrueX1,fTrueX2,
-			    Form("gsvd_wreg_%d",id), 
-			    Form("w (#lambda = %g)", lambda));
+                            Form("gsvd_wreg_%d",id),
+                            Form("w (#lambda = %g)", lambda));
   gsvd->xregHist = Vec2Hist(xreg, fTrueX1,fTrueX2,
-			    Form("gsvd_xreg_%d",id),
-			    Form("x (#lambda = %g)", lambda));
+                            Form("gsvd_xreg_%d",id),
+                            Form("x (#lambda = %g)", lambda));
 
   gsvd->bregHist = Vec2Hist(fMatAhat*xreg, fMeasX1,fMeasX2,
-			    Form("gsvd_breg_%d",id),
-			    Form("Ax_{#lambda} (#lambda = %g)", lambda));
-  
+                            Form("gsvd_breg_%d",id),
+                            Form("Ax_{#lambda} (#lambda = %g)", lambda));
+
   // Assign uncertainties
-  for (int j=0; j<n; j++) {
+  for (int j=0; j<n; j++)
+  {
     gsvd->wregHist->SetBinError(j+1, TMath::Sqrt(gsvd->covw(j,j)));
     gsvd->xregHist->SetBinError(j+1, TMath::Sqrt(gsvd->covx(j,j)));
   }
-  
+
   // Absolute values for plotting
   TVectorD utbAbs(utb);
   TVectorD cAbs(c);
   TVectorD rcAbs(ElemMult(f,utb));   // TVectorD rcAbs(regc);
-  for (int i=0; i<n; i++) {
+  for (int i=0; i<n; i++)
+  {
     if (utbAbs(i) < 0) utbAbs(i) *= -1;
     if (cAbs(i) < 0)     cAbs(i) *= -1;
     if (rcAbs(i) < 0)   rcAbs(i) *= -1;
   }
-  gsvd->UTbAbs   = Vec2Hist(utbAbs, 0,n,Form("gsvd_utb_abs%d",id), "#||{u^{T}#upointb} ");
-  gsvd->coeffAbs = Vec2Hist(cAbs, 0,n,Form("gsvd_c_abs%d",id), "#||{u^{T}#upointb}/#alpha ");
-  gsvd->regcAbs  = Vec2Hist(rcAbs, 0,n,Form("gsvd_rc_abs%d",id), "f#||{u^{T}#upointb} ");
+  gsvd->UTbAbs   = Vec2Hist(utbAbs, 0,n,Form("gsvd_utb_abs%d",id),
+                            "#||{u^{T}#upointb} ");
+  gsvd->coeffAbs = Vec2Hist(cAbs, 0,n,Form("gsvd_c_abs%d",id),
+                            "#||{u^{T}#upointb}/#alpha ");
+  gsvd->regcAbs  = Vec2Hist(rcAbs, 0,n,Form("gsvd_rc_abs%d",id),
+                            "f#||{u^{T}#upointb} ");
 
   SetTH1Props(gsvd->UTbAbs,   kBlue, 0, kBlue, kFullSquare, 1.0);
   SetTH1Props(gsvd->coeffAbs, kRed, 0, kRed, kOpenSquare, 1.0);
@@ -551,51 +583,53 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD& L, double lambda, TH2* hA, TH1* hb, TStri
   return gsvd;
 }
 
-TCanvas* 
-UnfoldingUtils::DrawSVDPlot(SVDResult svdhists, double ymin, double ymax, TString opt)
+TCanvas *
+UnfoldingUtils::DrawSVDPlot(SVDResult svdhists, double ymin, double ymax,
+                            TString opt)
 {
   static int i=0; i++;
-  TCanvas* c = new TCanvas(Form("csvd%d",i), Form("csvd%d",i), 1);
+  TCanvas *c = new TCanvas(Form("csvd%d",i), Form("csvd%d",i), 1);
 
   // Draw frame histogram to set limits, title, etc.
   int nx = svdhists.sigma->GetNbinsX();
-  TH1F* hsvd = new TH1F(Form("hsvd%d",i), "SV Components;column index i;", 
-			200, 0, nx);
+  TH1F *hsvd = new TH1F(Form("hsvd%d",i), "SV Components;column index i;",
+                        200, 0, nx);
   hsvd->Draw();
   hsvd->GetYaxis()->SetRangeUser(ymin, ymax);
 
   // Singular value spectrum
   if (opt.Contains("sig"))
     svdhists.sigma->Draw("plsame");
-  
+
   // Draw |U'*b| and |U'*b|/sigma
   svdhists.UTb->Draw("plsame");
   svdhists.coeff->Draw("plsame");
   gPad->SetLogy();
-  
-  TLegend* leg = new TLegend(0.75, 0.75, 0.99, 0.99);
+
+  TLegend *leg = new TLegend(0.75, 0.75, 0.99, 0.99);
   if (opt.Contains("sig"))
     leg->AddEntry(svdhists.sigma, svdhists.sigma->GetTitle(), "p");
   leg->AddEntry(svdhists.UTb, svdhists.UTb->GetTitle(), "ep");
   leg->AddEntry(svdhists.coeff, svdhists.coeff->GetTitle(), "ep");
   leg->SetFillColor(kNone);
   leg->Draw();
-  
+
   return c;
 }
 
-TCanvas* 
-UnfoldingUtils::DrawGSVDPlot(GSVDResult* gsvd, double ymin, double ymax, TString opt)
+TCanvas *
+UnfoldingUtils::DrawGSVDPlot(GSVDResult *gsvd, double ymin, double ymax,
+                             TString opt)
 {
   static int i=0; i++;
-  TCanvas* c = new TCanvas(Form("cgsvd%d",i), Form("cgsvd%d",i), 1);
-  TLegend* leg = new TLegend(0.75, 0.75, 0.99, 0.99,
-			     Form("NDF_{eff} = %.1f", 
-				  gsvd->f.Sum()));
+  TCanvas *c = new TCanvas(Form("cgsvd%d",i), Form("cgsvd%d",i), 1);
+  TLegend *leg = new TLegend(0.75, 0.75, 0.99, 0.99,
+                             Form("NDF_{eff} = %.1f",
+                                  gsvd->f.Sum()));
   int nx = gsvd->UTbAbs->GetNbinsX();
-  TH1F* h = new TH1F(Form("hgsvd%d",i), 
-		     Form("GSVD Components (#lambda = %g);column index i;",
-			  gsvd->lambda), 200, 0, nx);
+  TH1F *h = new TH1F(Form("hgsvd%d",i),
+                     Form("GSVD Components (#lambda = %g);column index i;",
+                          gsvd->lambda), 200, 0, nx);
   h->Draw();
   h->GetYaxis()->SetRangeUser(ymin, ymax);
   gPad->SetLogy();
@@ -607,18 +641,20 @@ UnfoldingUtils::DrawGSVDPlot(GSVDResult* gsvd, double ymin, double ymax, TString
   leg->AddEntry(gsvd->regcAbs, gsvd->regcAbs->GetTitle(), "ep");
 
   // Draw coeffs also if requested
-  if (opt.Contains("c")) {
+  if (opt.Contains("c"))
+  {
     gsvd->coeffAbs->Draw("plsame");
     leg->AddEntry(gsvd->coeffAbs, gsvd->coeffAbs->GetTitle(), "ep");
     // TODO: add damped coeffs f|U'*b|/alpha
   }
-  
+
   leg->SetFillColor(kNone);
   leg->Draw();
 
-  if (opt.Contains("~")) {
+  if (opt.Contains("~"))
+  {
     TLine one;
-    TAxis* ax = h->GetXaxis();
+    TAxis *ax = h->GetXaxis();
     one.DrawLine(ax->GetXmin(), 1.0, ax->GetXmax(), 1.0);
   }
 
@@ -627,16 +663,16 @@ UnfoldingUtils::DrawGSVDPlot(GSVDResult* gsvd, double ymin, double ymax, TString
 
 
 TestProblem
-UnfoldingUtils::MonteCarloConvolution(const int m, 
-				      const int n,
-				      const double xm1,
-				      const double xm2,
-				      const double xt1,
-				      const double xt2,
-				      TF1* truthFn, 
-				      TF1* kernelFn, 
-				      const int nEvents)
-{  
+UnfoldingUtils::MonteCarloConvolution(const int m,
+                                      const int n,
+                                      const double xm1,
+                                      const double xm2,
+                                      const double xt1,
+                                      const double xt2,
+                                      TF1 *truthFn,
+                                      TF1 *kernelFn,
+                                      const int nEvents)
+{
   static int id = 0; id++;
   TestProblem t;
   double dm = (xm2-xm1)/m;
@@ -649,21 +685,22 @@ UnfoldingUtils::MonteCarloConvolution(const int m,
       R(i,j) = kernelFn->Eval(xt1+j*dt-i*dm);
   t.Response = Matrix2Hist(R, Form("R%d",id), xm1, xm2, xt1, xt2);
   t.Response->SetTitle(Form("%d x %d convolution matrix;"
-			    "s (observed);t (true)", m, n));
+                            "s (observed);t (true)", m, n));
 
-  TH2D* RMC = new TH2D(Form("R_MC%d",id), "A_{MC}", 
-		       m,xm1,xm2,n,xt1,xt2);
+  TH2D *RMC = new TH2D(Form("R_MC%d",id), "A_{MC}",
+                       m,xm1,xm2,n,xt1,xt2);
 
   // Model a true and a measured distribution
   // There is no bIdeal for this problem.
-  t.xTruth    = new TH1D("hTrue",    "",         n, xt1, xt2);  
-  t.xTruthEst = new TH1D("hTrueEst", "hTrueEst", n, xt1, xt2);  
-  t.bNoisy    = new TH1D("hMeas",    "hMeas",    m, xm1, xm2);  
+  t.xTruth    = new TH1D("hTrue",    "",         n, xt1, xt2);
+  t.xTruthEst = new TH1D("hTrueEst", "hTrueEst", n, xt1, xt2);
+  t.bNoisy    = new TH1D("hMeas",    "hMeas",    m, xm1, xm2);
   t.xTruthEst->Sumw2();
   t.bNoisy->Sumw2();
 
 
-  for (Int_t i=0; i<nEvents; i++) {
+  for (Int_t i=0; i<nEvents; i++)
+  {
     Double_t xt = truthFn->GetRandom();
     t.xTruthEst->Fill(xt);
     Double_t xm = xt + kernelFn->GetRandom();
@@ -676,7 +713,8 @@ UnfoldingUtils::MonteCarloConvolution(const int m,
   t.eff->Divide(t.xTruthEst);
 
   // Exact truth histogram
-  for (int j=1; j<=n; j++) {
+  for (int j=1; j<=n; j++)
+  {
     double val = truthFn->Eval(t.xTruth->GetBinCenter(j));
     t.xTruth->SetBinContent(j, val);
   }
@@ -686,20 +724,20 @@ UnfoldingUtils::MonteCarloConvolution(const int m,
 }
 
 TestProblem
-UnfoldingUtils::AtlasDiJetMass(const int Nt, 
-			       const int Nr,
-			       double tbins[],
-			       double rbins[],
-			       const double apar,
-			       const double bpar,
-			       const int nEvents,
-			       const double evtWeight)
+UnfoldingUtils::AtlasDiJetMass(const int Nt,
+                               const int Nr,
+                               double tbins[],
+                               double rbins[],
+                               const double apar,
+                               const double bpar,
+                               const int nEvents,
+                               const double evtWeight)
 {
   // From "Fully Bayesian Unfolding" by G. Choudalakis.
   // see arXiv:1201.4612v4
   // Recommended binning:
   // double bins[Nt+1] = {0};
-  // for (int j=0; j<=Nt; j++) 
+  // for (int j=0; j<=Nt; j++)
   //   bins[j] = 500*TMath::Exp(0.15*j);
 
   static int id = 0; id++;
@@ -707,17 +745,17 @@ UnfoldingUtils::AtlasDiJetMass(const int Nt,
   TRandom3 ran;
 
   // Mass distribution dN/dM
-  TF1* mass = new TF1("mass_dist", 
-		      "TMath::Power(1.-x/7000,6.0)/TMath::Power(x/7000,4.8)",
-		      tbins[0], tbins[Nt]);
-  
+  TF1 *mass = new TF1("mass_dist",
+                      "TMath::Power(1.-x/7000,6.0)/TMath::Power(x/7000,4.8)",
+                      tbins[0], tbins[Nt]);
+
   // Generate test problem by MC convolution
-  TH1D* hT   = new TH1D("hT",   "Truth mass dist. #hat{T}", Nt, tbins);
-  TH1D* hTmc = new TH1D("hTmc", "MC Truth mass dist. #tilde{T}", Nt, tbins);
-  TH1D* hD   = new TH1D("hD", "Measured mass dist.", Nr, rbins);
-  TH2D* hM   = new TH2D("hM", "Migration matrix", Nr, rbins, Nt, tbins);  
+  TH1D *hT   = new TH1D("hT",   "Truth mass dist. #hat{T}", Nt, tbins);
+  TH1D *hTmc = new TH1D("hTmc", "MC Truth mass dist. #tilde{T}", Nt, tbins);
+  TH1D *hD   = new TH1D("hD", "Measured mass dist.", Nr, rbins);
+  TH2D *hM   = new TH2D("hM", "Migration matrix", Nr, rbins, Nt, tbins);
   hM->SetTitle(Form("%d x %d migration matrix M_{tr};"
-		    "mass (observed);mass (true)", Nr, Nt));
+                    "mass (observed);mass (true)", Nr, Nt));
   hT->SetLineWidth(2);
   hD->SetLineWidth(2);
 
@@ -725,7 +763,8 @@ UnfoldingUtils::AtlasDiJetMass(const int Nt,
   // Fill histos with MC events.
   // The response matrix gets more statistics than the data.
   double xt, xm, sigma;
-  for (int i=0; i<nEvents; i++) {
+  for (int i=0; i<nEvents; i++)
+  {
     xt = mass->GetRandom();
     sigma = apar*TMath::Sqrt(xt) + bpar*xt;
     xm = xt + ran.Gaus(0, sigma);
@@ -737,11 +776,13 @@ UnfoldingUtils::AtlasDiJetMass(const int Nt,
   // Simulate Poisson fluctuations in real data (integer content, empty bins)
   for (int r=1; r<=Nr; r++)
     hD->SetBinContent(r, ran.Poisson(hD->GetBinContent(r)));
-  
+
   // The true truth \hat{T}
   double totmass = mass->Integral(tbins[0],tbins[Nt]);
-  for (int j=1; j<=Nt; j++) {
-    hT->SetBinContent(j, evtWeight*nEvents*mass->Integral(tbins[j-1],tbins[j])/totmass);
+  for (int j=1; j<=Nt; j++)
+  {
+    hT->SetBinContent(j, evtWeight*nEvents*mass->Integral(tbins[j-1],
+                      tbins[j])/totmass);
     hT->SetBinError(j, 0);
   }
   cout << "Done." << endl;
@@ -750,8 +791,8 @@ UnfoldingUtils::AtlasDiJetMass(const int Nt,
   // numerator for efficiency. Bin contents should be counts
   // here. Elements are normalized to contain probabilities only after
   // projection & division by T-tilde.
-  TH1D* hMt  = hM->ProjectionY("hMt",1,Nr);
-  TH1D* heff = (TH1D*)hMt->Clone("heff");
+  TH1D *hMt  = hM->ProjectionY("hMt",1,Nr);
+  TH1D *heff = (TH1D *)hMt->Clone("heff");
   heff->Divide(hTmc);
   heff->Scale(evtWeight);
   hM->Scale(1./nEvents);
@@ -777,7 +818,8 @@ UnfoldingUtils::ShawSystem(const int n, double noise)
   TVectorD b(b_ideal);
 
   // Add Gaussian white noise to b
-  if (noise > 0.) {
+  if (noise > 0.)
+  {
     TRandom3 r3;
     for (int j=0; j<n; j++) b(j) += noise*r3.Gaus();
   }
@@ -793,8 +835,9 @@ UnfoldingUtils::ShawSystem(const int n, double noise)
   return t;
 }
 
-void 
-UnfoldingUtils::ShawSystem(const int n, TMatrixD& A, TVectorD& x, TVectorD& b, double noise)
+void
+UnfoldingUtils::ShawSystem(const int n, TMatrixD &A, TVectorD &x, TVectorD &b,
+                           double noise)
 {
   // Create a complete test problem for unfolding exercises that is
   // mathematically identical to shaw.m in the Matlab "regularization
@@ -805,8 +848,9 @@ UnfoldingUtils::ShawSystem(const int n, TMatrixD& A, TVectorD& x, TVectorD& b, d
   // TVectorD xt(n), bt(n);      // true x and b (no noise)
   // ShawSystem(n, A, xt, bt);
   // Where n is an even integer.
-  
-  if (n%2) {
+
+  if (n%2)
+  {
     gROOT->Error("UnfoldingUtils::ShawSystem()", "Even binning required");
     return;
   }
@@ -818,7 +862,8 @@ UnfoldingUtils::ShawSystem(const int n, TMatrixD& A, TVectorD& x, TVectorD& b, d
   // For computing x vector
   double a1=2, a2=1, c1=6, c2=2, t1=0.8, t2=-0.5;
 
-  for (int i=0; i<n; i++) {
+  for (int i=0; i<n; i++)
+  {
     co[i] = TMath::Cos(-TMath::PiOver2() + (0.5 + i)*h);
     psi[i] = TMath::Pi()*TMath::Sin(-TMath::PiOver2() + (0.5 + i)*h);
 
@@ -827,8 +872,10 @@ UnfoldingUtils::ShawSystem(const int n, TMatrixD& A, TVectorD& x, TVectorD& b, d
     x(i) = a1*TMath::Exp(arg1) + a2*TMath::Exp(arg2);
   }
 
-  for (int i=0; i<n/2; i++) {
-    for (int j=i; j<n-i; j++) {
+  for (int i=0; i<n/2; i++)
+  {
+    for (int j=i; j<n-i; j++)
+    {
       double ss = psi[i] + psi[j];
       A(i,j) = TMath::Power((co[i]+co[j])*TMath::Sin(ss)/ss, 2);
       A(n-j-1,n-i-1) = A(i,j);
@@ -838,10 +885,12 @@ UnfoldingUtils::ShawSystem(const int n, TMatrixD& A, TVectorD& x, TVectorD& b, d
 
   // Create upper triangular matrix from A
   TMatrixD Atri(A);
-  for (int i=0; i<n; i++) {
-    for (int j=i; j<n; j++) {
+  for (int i=0; i<n; i++)
+  {
+    for (int j=i; j<n; j++)
+    {
       if (j<=i)
-  	Atri(i,j)=0.;
+        Atri(i,j)=0.;
     }
   }
   Atri.T();
@@ -852,104 +901,115 @@ UnfoldingUtils::ShawSystem(const int n, TMatrixD& A, TVectorD& x, TVectorD& b, d
   b = A*x;
 
   // Add Gaussian white noise to b
-  if (noise > 0.) {
+  if (noise > 0.)
+  {
     TRandom3 r3;
     for (int j=0; j<n; j++) b(j) += noise*r3.Gaus();
   }
-  
+
   return;
 }
 
-TMatrixD 
-UnfoldingUtils::Hist2Matrix(const TH2* h)
+TMatrixD
+UnfoldingUtils::Hist2Matrix(const TH2 *h)
 {
   int nx = h->GetNbinsX();
   int ny = h->GetNbinsY();
   TMatrixD m(nx, ny);
-  for (Int_t j=0; j<ny; j++) {
-    for (Int_t i=0; i<nx; i++) {
+  for (Int_t j=0; j<ny; j++)
+  {
+    for (Int_t i=0; i<nx; i++)
+    {
       m(i,j) = h->GetBinContent(i+1,j+1);
     }
   }
   return m;
 }
 
-TH2D* 
-UnfoldingUtils::Matrix2Hist(TMatrixD& A, TString hName, 
-			    double x1, double x2, double y1, double y2)
+TH2D *
+UnfoldingUtils::Matrix2Hist(TMatrixD &A, TString hName,
+                            double x1, double x2, double y1, double y2)
 {
   int m = A.GetNrows();
   int n = A.GetNcols();
-  TH2D* h = new TH2D(hName.Data(),hName.Data(),m,x1,x2,n,y1,y2);
-  
-  for (int i=0; i<m; i++) {
-    for (int j=0; j<n; j++) {
+  TH2D *h = new TH2D(hName.Data(),hName.Data(),m,x1,x2,n,y1,y2);
+
+  for (int i=0; i<m; i++)
+  {
+    for (int j=0; j<n; j++)
+    {
       h->SetBinContent(i+1, j+1, A(i,j));
     }
   }
-  
+
   return h;
 }
 
-TH2D* 
-UnfoldingUtils::Matrix2Hist(TMatrixD& A, TString hName, 
-			    double xbins[], double ybins[])
+TH2D *
+UnfoldingUtils::Matrix2Hist(TMatrixD &A, TString hName,
+                            double xbins[], double ybins[])
 {
   // xbins and ybins better have size m+1 and n+1, respectively
   int m = A.GetNrows();
   int n = A.GetNcols();
-  TH2D* h = new TH2D(hName.Data(),hName.Data(),m,xbins,n,ybins);
-  
-  for (int i=0; i<m; i++) {
-    for (int j=0; j<n; j++) {
+  TH2D *h = new TH2D(hName.Data(),hName.Data(),m,xbins,n,ybins);
+
+  for (int i=0; i<m; i++)
+  {
+    for (int j=0; j<n; j++)
+    {
       h->SetBinContent(i+1, j+1, A(i,j));
     }
   }
-  
+
   return h;
 }
 
-TH2D* 
-UnfoldingUtils::Matrix2Hist(TMatrixD& A, TMatrixD& errA, TString hName, 
-			    double xbins[], double ybins[])
+TH2D *
+UnfoldingUtils::Matrix2Hist(TMatrixD &A, TMatrixD &errA, TString hName,
+                            double xbins[], double ybins[])
 {
   int m = A.GetNrows();
   int n = A.GetNcols();
-  TH2D* h = new TH2D(hName.Data(),hName.Data(),m,xbins,n,ybins);
-  
-  for (int i=0; i<m; i++) {
-    for (int j=0; j<n; j++) {
+  TH2D *h = new TH2D(hName.Data(),hName.Data(),m,xbins,n,ybins);
+
+  for (int i=0; i<m; i++)
+  {
+    for (int j=0; j<n; j++)
+    {
       h->SetBinContent(i+1, j+1, A(i,j));
       h->SetBinError(i+1, j+1, errA(i,j));
     }
   }
-  
+
   return h;
 }
 
 
-TH1D* 
-UnfoldingUtils::Vec2Hist(const TVectorD& v, Double_t x1, Double_t x2, 
-			 TString name, TString title)
+TH1D *
+UnfoldingUtils::Vec2Hist(const TVectorD &v, Double_t x1, Double_t x2,
+                         TString name, TString title)
 {
   int nb = v.GetNoElements();
-  TH1D* h = new TH1D(name.Data(), title.Data(), nb, x1, x2);
+  TH1D *h = new TH1D(name.Data(), title.Data(), nb, x1, x2);
 
-  for (int i=0; i<nb; i++) {
+  for (int i=0; i<nb; i++)
+  {
     h->SetBinContent(i+1, v(i));
   }
   return h;
 }
 
-TVectorD 
-UnfoldingUtils::Hist2Vec(const TH1* h, TString opt)
+TVectorD
+UnfoldingUtils::Hist2Vec(const TH1 *h, TString opt)
 {
   // Returns TVectorD of the bin contents of the input histogram
   int nb = h->GetNbinsX();
   TVectorD v(nb);
   if (!h) return v;
   double val = 0.;
-  for (Int_t i= 0; i<nb; i++) {
+  for (Int_t i= 0; i<nb; i++)
+  {
     if (opt.Contains("unc"))
       val = h->GetBinError(i+1);
     else
@@ -959,29 +1019,31 @@ UnfoldingUtils::Hist2Vec(const TH1* h, TString opt)
   return v;
 }
 
-TVectorD 
-UnfoldingUtils::Graph2Vec(const TGraph* g)
+TVectorD
+UnfoldingUtils::Graph2Vec(const TGraph *g)
 {
   // Return a TVectorD from a TGraph (or inherited classes)
   int nb = g->GetN();
   TVectorD v(nb);
   if (!g) return v;
 
-  for (int i=0; i<nb; i++) {
+  for (int i=0; i<nb; i++)
+  {
     v(i) = g->GetY()[i];
   }
   return v;
 }
 
 double
-UnfoldingUtils::SmoothingNorm(TVectorD& x, int regtype)
+UnfoldingUtils::SmoothingNorm(TVectorD &x, int regtype)
 {
   double sn = 0;
-  switch (regtype) {
-  case kNone:     
-    sn = 0; 
+  switch (regtype)
+  {
+  case kNone:
+    sn = 0;
     break;
-  case kTotCurv:  
+  case kTotCurv:
     sn = Curvature(x);
     break;
   }
@@ -989,11 +1051,12 @@ UnfoldingUtils::SmoothingNorm(TVectorD& x, int regtype)
 }
 
 double
-UnfoldingUtils::Curvature(TVectorD& x)
+UnfoldingUtils::Curvature(TVectorD &x)
 {
-  // Eq. (38), NIM A 372 (1996) 469-481. 
+  // Eq. (38), NIM A 372 (1996) 469-481.
   double delta=0, val=0;
-  for (int i=1; i<fN-1; i++) {
+  for (int i=1; i<fN-1; i++)
+  {
     delta = fSmoothingWeight(i)*(x(i+1) - x(i)) - (x(i) - x(i-1));
     val += delta*delta;
   }
@@ -1011,26 +1074,28 @@ UnfoldingUtils::RegChi2(const double *pars)
   TVectorD x(fN);
   for (int i=0; i<fN; i++)
     x(i) = pars[i];
-  
+
   // Unmodified chi^2 (Ax-b)'*Binv*(Ax-b)
-  if (fTilde) {
+  if (fTilde)
+  {
     TVectorD resid = fMatATilde*x - fVecbTilde;
     chi2 = resid*resid;
   }
-  else {
+  else
+  {
     TVectorD resid = fMatAhat*x - fVecb;
     chi2 = resid*(fMatBinv*resid);
   }
-  
-  // Additive chi^2 modifier (reg. penalty value)  
+
+  // Additive chi^2 modifier (reg. penalty value)
   double mod = fRegWeight*SmoothingNorm(x, fRegType);
-  
+
   chi2 += mod;
   return chi2;
 }
 
 UnfoldingResult
-UnfoldingUtils::UnfoldChiSqMin(TVectorD& regWts, TString opt)
+UnfoldingUtils::UnfoldChiSqMin(TVectorD &regWts, TString opt)
 {
   // Unfold by minimizing return values of RegChi2().
   // To seed the fitter, call SetPrior(TH1*).
@@ -1047,129 +1112,138 @@ UnfoldingUtils::UnfoldChiSqMin(TVectorD& regWts, TString opt)
   // Control which A and b are used in RegChi2().
   if (opt.Contains("~"))
     fTilde = true;
-  
+
   double kbins[nRegWts+1], xbins[fN+1];
-  for (int j=0; j<=fN; j++) {
+  for (int j=0; j<=fN; j++)
+  {
     xbins[j] = fTrueX1 + j*(fTrueX2-fTrueX1)/fN;
   }
-  for (int k=0; k<nRegWts; k++) {
+  for (int k=0; k<nRegWts; k++)
+  {
     kbins[k] = regWts(k);
   }
   kbins[nRegWts] = 2*kbins[nRegWts-1]-kbins[nRegWts-2];
 
   //  result.XRegHist = Matrix2Hist(result.XReg, XRegErr, Form("xregHist_%d",id), xbins, kbins);
   result.XRegHist = new TH2D(Form("hChsq%d",id), Form("Minimum #chi^{2}_{reg} solutions"),
-			     fN, xbins, nRegWts, kbins);
-  
+                             fN, xbins, nRegWts, kbins);
+
   result.XRegHist->GetXaxis()->CenterTitle();
   result.XRegHist->GetYaxis()->CenterTitle();
   result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
   result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
   result.XRegHist->SetTitle("GSVD solutions: x_{#lambda};x;#lambda");
-  
+
   result.LCurve = new TGraph();
   result.LCurve->SetTitle("TMinuit L-Curve;Unregulated total #chi^{2};total curvature");
 
   // Set up the chi^2 minimizer
   //  TFitterMinuit* min = new FitterMinuit();
-  ROOT::Math::Minimizer* min = 
+  ROOT::Math::Minimizer *min =
     ROOT::Math::Factory::CreateMinimizer("Minuit2", "Migrad");
   min->SetMaxFunctionCalls(1000000);
   min->SetTolerance(0.001);
   min->SetPrintLevel(1);
   ROOT::Math::Functor f(this, &UnfoldingUtils::RegChi2, nPars);
   min->SetFunction(f);
-  
+
   // Initialize tmx array and pass to minimizer.
-  double* tmx = new double[fN];
+  double *tmx = new double[fN];
   double stepSize = 0.1;
 
-  for (int k=0; k<nRegWts; k++) {
-    for (int j=0; j<fN; j++) {
+  for (int k=0; k<nRegWts; k++)
+  {
+    for (int j=0; j<fN; j++)
+    {
       tmx[j] = fHistPrior->GetBinContent(j+1);
-      
+
       // Require all parameters to have a minimum positive value
-      if (tmx[j] < 0) {
-	tmx[j] = 1e-6;
+      if (tmx[j] < 0)
+      {
+        tmx[j] = 1e-6;
       }
-      
+
       // Constrain pars to be >= 0 unless requested
       if (opt.Contains("-"))
-	min->SetVariable(j, Form("xpar%d",j), tmx[j], stepSize);
+        min->SetVariable(j, Form("xpar%d",j), tmx[j], stepSize);
       else
-	min->SetLowerLimitedVariable(j, Form("xpar%d",j), tmx[j], stepSize, 0.0);
-      
+        min->SetLowerLimitedVariable(j, Form("xpar%d",j), tmx[j], stepSize, 0.0);
+
       if (0) Printf("%g", tmx[j]);
     }
-    
+
     fRegWeight = regWts(k);
 
-    Info("UnfoldingUtils::UnfoldChiSqMin()", 
-	 "Initial (regularized) chi squared = %g for reg. weight %g", 
-	 RegChi2(tmx), regWts(k));
+    Info("UnfoldingUtils::UnfoldChiSqMin()",
+         "Initial (regularized) chi squared = %g for reg. weight %g",
+         RegChi2(tmx), regWts(k));
 
-    min->Minimize(); 
-    
+    min->Minimize();
+
     TVectorD w(fN); // Solution for this k
-    for (int j=0; j<nPars; j++) {
+    for (int j=0; j<nPars; j++)
+    {
       tmx[j] = min->X()[j];
       double val = tmx[j];
       double err = val < 1 ? 1. : min->Errors()[j];
       w(j) = val;
-      
+
       result.XRegHist->SetBinContent(j+1,k+1,val);
-      result.XRegHist->SetBinError(  j+1,k+1,err);
+      result.XRegHist->SetBinError(j+1,k+1,err);
 
     }
     fRegWeight = 0.;
-    result.LCurve->SetPoint(k, RegChi2(tmx), Curvature(w));    
+    result.LCurve->SetPoint(k, RegChi2(tmx), Curvature(w));
   } // k loop
-  
+
   return result;
 }
 
 TMatrixD
-UnfoldingUtils::RegularizedInverseResponse(GSVDResult* gsvd, double lambda)
+UnfoldingUtils::RegularizedInverseResponse(GSVDResult *gsvd, double lambda)
 {
   // Compute A^# from GSVD components as X * F_lambda * C^dagger * U'
   // where F is the diagonal matrix of filter factors for this lambda value.
   int n  = gsvd->n;
-  int m  = gsvd->m; 
+  int m  = gsvd->m;
   int p  = gsvd->p;
   TMatrixD FCd(n,n);      // Filter factor matrix * pseudoinverse(diag(alpha))
   TMatrixD Ap(n,m);       // Regularized inverse A^#
-  TMatrixD UT(TMatrixD::kTransposed, gsvd->U);  
+  TMatrixD UT(TMatrixD::kTransposed, gsvd->U);
 
   // Create Tikhonov filter factors for this lambda
   TVectorD f(n);
-  for (int i=0; i<n; i++) {
-    if (i >= n-p) {
-      double g2 = gsvd->gamma(i)*gsvd->gamma(i); 
+  for (int i=0; i<n; i++)
+  {
+    if (i >= n-p)
+    {
+      double g2 = gsvd->gamma(i)*gsvd->gamma(i);
       f(i) = g2 / (g2 + lambda*lambda);
     }
     else
       f(i) = 1.0;
   }
-  for (int i=0; i<fN; i++) {
+  for (int i=0; i<fN; i++)
+  {
     FCd(i,i) = (gsvd->alpha(i) > 0.) ? f(i)/gsvd->alpha(i) : 0.;
   }
-  Ap = gsvd->X * FCd * UT; 
+  Ap = gsvd->X * FCd * UT;
   return Ap;
 }
 
 UnfoldingResult
-UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
-				   TVectorD& lambda, 
-				   TString /*opt*/)
+UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult *gsvd,
+                                   TVectorD &lambda,
+                                   TString /*opt*/)
 {
   UnfoldingResult result;
   static int id=0; id++; // So this fn. can be called more than once
 
   int nk = lambda.GetNrows();
   int n  = gsvd->n;
-  int m  = gsvd->m; 
+  int m  = gsvd->m;
   int p  = gsvd->p;
-  TMatrixD WRegErr(n,nk);  
+  TMatrixD WRegErr(n,nk);
   TMatrixD XRegErr(n,nk);
   result.WReg.ResizeTo(n, nk);
   result.XReg.ResizeTo(n, nk);
@@ -1178,19 +1252,19 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   result.GcvCurve  = new TGraph(nk);
   result.RhoCurve  = new TGraph(nk);
   result.FilterSum = new TGraph(nk);
-  TGraph* fsInv    = new TGraph(nk); // FilterSum w/ x,y swapped 
+  TGraph *fsInv    = new TGraph(nk); // FilterSum w/ x,y swapped
 
 
   result.hwCov = new TH3D(Form("hwCov_gsvd_%d", id),
-			  Form("hwCov_gsvd_%d", id),
-			  fN,fTrueX1,fTrueX2,
-			  fN,fTrueX1,fTrueX2,
-			  nk, lambda(0), lambda(nk-1));
+                          Form("hwCov_gsvd_%d", id),
+                          fN,fTrueX1,fTrueX2,
+                          fN,fTrueX1,fTrueX2,
+                          nk, lambda(0), lambda(nk-1));
   result.hxCov = new TH3D(Form("hxCov_gsvd_%d", id),
-			  Form("hxCov_gsvd_%d", id),
-			  fN,fTrueX1,fTrueX2,
-			  fN,fTrueX1,fTrueX2,
-			  nk, lambda(0), lambda(nk-1));
+                          Form("hxCov_gsvd_%d", id),
+                          fN,fTrueX1,fTrueX2,
+                          fN,fTrueX1,fTrueX2,
+                          nk, lambda(0), lambda(nk-1));
 
   result.lambdaGcv = 0;
   double gcvMin = 1e99;
@@ -1204,17 +1278,19 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   TMatrixD B(gsvd->covb); // Error matrix of b
   TMatrixD FCd(n,n);      // Filter factor matrix * pseudoinverse(diag(alpha))
   // TMatrixD Ap(n,m);       // Regularized inverse A^#
-  TMatrixD UT(TMatrixD::kTransposed, gsvd->U);  
+  TMatrixD UT(TMatrixD::kTransposed, gsvd->U);
 
   // Compute the number of significant GSVD coefficients
   int nSignificantGSVDCoeffs = 0;
   double errThreshold = 0;
-  for (int i=0; i<fM; i++) 
+  for (int i=0; i<fM; i++)
     errThreshold += B(i,i)/fM;
-  
-  for (int j=0; j<fN-1; j++) {
-    if (gsvd->UTbAbs->GetBinContent(j+1) > errThreshold && 
-	gsvd->UTbAbs->GetBinContent(j+2) < errThreshold) {
+
+  for (int j=0; j<fN-1; j++)
+  {
+    if (gsvd->UTbAbs->GetBinContent(j+1) > errThreshold &&
+        gsvd->UTbAbs->GetBinContent(j+2) < errThreshold)
+    {
       nSignificantGSVDCoeffs = j;
       break;
     }
@@ -1222,20 +1298,23 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   Printf("# coeffs > %.2f = %d", errThreshold, nSignificantGSVDCoeffs);
 
   // Scan over lambda values, generate nk solutions
-  for (int k=0; k<nk; k++) {
-    
+  for (int k=0; k<nk; k++)
+  {
+
     // Create Tikhonov filter factors for this lambda
     double l = lambda(k);
     TVectorD f(n);
-    for (int i=0; i<n; i++) {
-      if (i >= n-p) {
-	double g2 = gsvd->gamma(i)*gsvd->gamma(i); 
-	f(i) = g2 / (g2 + l*l);
+    for (int i=0; i<n; i++)
+    {
+      if (i >= n-p)
+      {
+        double g2 = gsvd->gamma(i)*gsvd->gamma(i);
+        f(i) = g2 / (g2 + l*l);
       }
       else
-	f(i) = 1.0;
+        f(i) = 1.0;
     }
-    
+
     // Damped GSVD coefficients
     TVectorD regc = ElemMult(f, gsvd->coeff);
     TVectorD wreg = gsvd->X*regc;
@@ -1251,20 +1330,23 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
     TMatrixD covx(covw);
 
     // For each lambda, cov(w) and cov(x) are added to TH3s.
-    for (int i=0; i<n; i++) {
-      for (int j=0; j<n; j++) {
-	double cw = covw(i,j);
-	double cx = fVecXini(i) * cw * fVecXini(j);
-	covx(i,j) = cx;
-	result.hwCov->SetBinContent(i+1,j+1,k+1,cw);
-	result.hxCov->SetBinContent(i+1,j+1,k+1,cx);
-	if (i==j) WRegErr(j,k) = TMath::Sqrt(cw); 
-	if (i==j) XRegErr(j,k) = TMath::Sqrt(cx); 
+    for (int i=0; i<n; i++)
+    {
+      for (int j=0; j<n; j++)
+      {
+        double cw = covw(i,j);
+        double cx = fVecXini(i) * cw * fVecXini(j);
+        covx(i,j) = cx;
+        result.hwCov->SetBinContent(i+1,j+1,k+1,cw);
+        result.hxCov->SetBinContent(i+1,j+1,k+1,cx);
+        if (i==j) WRegErr(j,k) = TMath::Sqrt(cw);
+        if (i==j) XRegErr(j,k) = TMath::Sqrt(cx);
       }
     }
 
     // Regularized solution
-    for (int j=0; j<n; j++) {
+    for (int j=0; j<n; j++)
+    {
       result.WReg(j,k) = wreg(j);
       result.XReg(j,k) = xreg(j);
     }
@@ -1293,28 +1375,29 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
     double gcv = rnorm / (m - fsum);
 
     // Compute mean global correlation coefficients (V. Blobel)
-    //    double rho_j = 0; 
+    //    double rho_j = 0;
     double rhoMean = 0;
     double rhoj2 = 0;
     TMatrixD covxInv = MoorePenroseInverse(covx);
-    
-    for (int j=0; j<n; j++) {
+
+    for (int j=0; j<n; j++)
+    {
       double vxreg = covx(j,j);
       double vxinv = covxInv(j,j);
       //      double vxinv = (gsvd->covxInv)(j,j);
       double prod = vxreg*vxinv;
 
-      // if (prod == 0 || prod < 1.) 
-      // 	rho_j = 0;
+      // if (prod == 0 || prod < 1.)
+      //  rho_j = 0;
       // else
-      // 	rho_j = TMath::Sqrt(1 - 1./prod);
+      //  rho_j = TMath::Sqrt(1 - 1./prod);
 
       // rhoMean += rho_j / n;
 
-      if (prod == 0) 
-      	rhoj2 = 0;
+      if (prod == 0)
+        rhoj2 = 0;
       else
-      	rhoj2 = 1 - 1./prod;
+        rhoj2 = 1 - 1./prod;
 
       rhoMean += rhoj2 / n;
     }
@@ -1331,12 +1414,14 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
     //   result.lambdaStf = lambda(k);
     //   result.kStf = k;
     // }
-    if (gcv < gcvMin) {
+    if (gcv < gcvMin)
+    {
       gcvMin = gcv;
       result.lambdaGcv = lambda(k);
       result.kGcv = k;
     }
-    if (rho < rhoMin) {
+    if (rho < rhoMin)
+    {
       rhoMin = rho;
       result.lambdaRho = lambda(k);
       result.kRho = k;
@@ -1344,7 +1429,8 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   }
 
   result.lambdaStf = fsInv->Eval(double(nSignificantGSVDCoeffs));
-  result.kStf = TMath::BinarySearch(nk, result.FilterSum->GetX(), result.lambdaStf);
+  result.kStf = TMath::BinarySearch(nk, result.FilterSum->GetX(),
+                                    result.lambdaStf);
 
   // Assign result.Lcurvature and result.kLcv
   result.LCurvature = LogCurvature(result.LCurve, lambda, result.kLcv);
@@ -1353,15 +1439,17 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   int kg = result.kGcv+1;
   result.RhoCurve->SetName("gsvd_rho");
   result.RhoCurve->SetTitle("GSVD mean global correlation coefficients;"
-			    "#lambda;#LT#rho#GT");
-  result.LCurve->SetTitle("GSVD L-Curve;||Ax_{#lambda}-b||_{2};||Lx_{#lambda}||_{2}");
+                            "#lambda;#LT#rho#GT");
+  result.LCurve->SetTitle("GSVD L-Curve;||Ax_{#lambda}-b||_{2};"
+                          "||Lx_{#lambda}||_{2}");
 
   result.LCurvature->SetName("gsvd_lcc");
-  result.LCurvature->SetTitle("GSVD L-Curve log curvature;#lambda;log curvature");
+  result.LCurvature->SetTitle("GSVD L-Curve log curvature;#lambda;"
+                              "log curvature");
   result.GcvCurve->SetNameTitle("gsvd_gcv","GSVD cross-validation curve;"
-				"#lambda;G(#lambda)");
-  result.FilterSum->SetNameTitle("gsvd_fsum","GSVD Tikhonov filter factor sum (= effective NDF);"
-				 "#lambda;effective NDF");
+                                "#lambda;G(#lambda)");
+  result.FilterSum->SetNameTitle("gsvd_fsum", "GSVD Tikhonov filter factor sum"
+                                 " (= effective NDF);#lambda;effective NDF");
 
   result.RhoCurve->GetXaxis()->CenterTitle();
   result.RhoCurve->GetYaxis()->CenterTitle();
@@ -1389,15 +1477,18 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   result.FilterSum->GetYaxis()->SetTitleOffset(1.3);
 
   double kbins[nk+1], xbins[fN+1];
-  for (int j=0; j<=fN; j++) {
+  for (int j=0; j<=fN; j++)
+  {
     xbins[j] = fTrueX1 + j*(fTrueX2-fTrueX1)/fN;
   }
-  for (int k=0; k<nk; k++) {
+  for (int k=0; k<nk; k++)
+  {
     kbins[k] = lambda(k);
   }
   kbins[nk] = 2*kbins[nk-1]-kbins[nk-2];
 
-  result.WRegHist = Matrix2Hist(result.WReg, WRegErr, Form("wregHist_%d",id), xbins, kbins);
+  result.WRegHist = Matrix2Hist(result.WReg, WRegErr, 
+                                Form("wregHist_%d",id), xbins, kbins);
   result.WRegHist->GetXaxis()->CenterTitle();
   result.WRegHist->GetYaxis()->CenterTitle();
   result.WRegHist->GetXaxis()->SetTitleOffset(1.8);
@@ -1405,7 +1496,8 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   result.WRegHist->SetTitle("GSVD solutions: w_{#lambda};w;#lambda");
 
 
-  result.XRegHist = Matrix2Hist(result.XReg, XRegErr, Form("xregHist_%d",id), xbins, kbins);
+  result.XRegHist = Matrix2Hist(result.XReg, XRegErr, 
+                                Form("xregHist_%d",id), xbins, kbins);
   result.XRegHist->GetXaxis()->CenterTitle();
   result.XRegHist->GetYaxis()->CenterTitle();
   result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
@@ -1416,31 +1508,31 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult* gsvd,
   int kl = result.kLcv+1;
   int ks = result.kStf+1;
 
-  result.hGcv = 
+  result.hGcv =
     result.XRegHist->ProjectionX(Form("gsvd_%d_gcv_bin%d",id,kg),kg,kg);
 
-  result.hRho = 
+  result.hRho =
     result.XRegHist->ProjectionX(Form("gsvd_%d_rho_bin%d",id,kr),kr,kr);
 
-  result.hLcv = 
+  result.hLcv =
     result.XRegHist->ProjectionX(Form("gsvd_%d_lcv_bin%d",id,kl),kl,kl);
 
-  result.hStf = 
+  result.hStf =
     result.XRegHist->ProjectionX(Form("gsvd_%d_stf_bin%d",id,ks),ks,ks);
 
   return result;
 }
 
-TH1D* 
-UnfoldingUtils::UnfoldSVD(double lambda, 
-			  TObjArray* output,
-			  TString opt,
-			  TH2* hA,
-			  TH1* hb,
-			  TH1* hXini)
+TH1D *
+UnfoldingUtils::UnfoldSVD(double lambda,
+                          TObjArray *output,
+                          TString opt,
+                          TH2 *hA,
+                          TH1 *hb,
+                          TH1 *hXini)
 {
   static int id=0; id++; // So this fn. can be called more than once
-  
+
   int matrixType = k2DerivBCR; // favor reflected w at boundaries
   if (opt.Contains("BC0"))
     matrixType = k2DerivBC0;   // favor w=0 at boundaries
@@ -1454,11 +1546,13 @@ UnfoldingUtils::UnfoldSVD(double lambda,
   TVectorD b(fVecb);
   TVectorD xini(fVecXini); // All 1's if no fHistXini
 
-  if (fTilde) {
+  if (fTilde)
+  {
     A = fMatATilde;
     b = fVecbTilde;
   }
-  else {
+  else
+  {
     A = fMatAhat;
   }
 
@@ -1470,13 +1564,13 @@ UnfoldingUtils::UnfoldSVD(double lambda,
     b = Hist2Vec(hb);
   if (hXini)
     xini = Hist2Vec(hXini);
-  
+
   TMatrixD L    = LMatrix(A.GetNcols(), matrixType, 1e-5);
   TMatrixD Linv = MoorePenroseInverse(L);
-  TMatrixD LTi(L); 
+  TMatrixD LTi(L);
   LTi.T(); // Inverse transpose L^{-T}
   LTi = MoorePenroseInverse(LTi);
-  
+
   // Compute SVD of AL^{-1} & get results
   TDecompSVD decomp(A*Linv);
   TVectorD s_vec   = decomp.GetSig();
@@ -1486,7 +1580,7 @@ UnfoldingUtils::UnfoldSVD(double lambda,
   TVectorD d       = UT*b;             // eq. 44
   int nd           = d.GetNrows();
   TVectorD tf(nd);   // Tikhonov filter factors
-  TVectorD z(nd);    // z = d/s * tf 
+  TVectorD z(nd);    // z = d/s * tf
   TVectorD dz(nd);
 
   // Abs. value vectors - for analysis
@@ -1497,15 +1591,16 @@ UnfoldingUtils::UnfoldSVD(double lambda,
   double s0 = s_vec(0);
   double si = 0;
   double smin = 1e-12*s0;
-  TMatrixD Z(nd,nd); 
-  for (int i=0; i<nd; i++) {
+  TMatrixD Z(nd,nd);
+  for (int i=0; i<nd; i++)
+  {
     si = s_vec(i);
     if (si < smin) si = smin;
     tf(i) = si*si/(si*si + lambda*lambda);
     z(i) = d(i)/si * tf(i);
     dz(i) =  tf(i)/si;
     Z(i,i) = dz(i)*dz(i);
-    
+
     // Extra - not part of solution
     absd(i) = TMath::Abs(d(i));
     dlam(i) = absd(i)*tf(i);
@@ -1518,11 +1613,13 @@ UnfoldingUtils::UnfoldSVD(double lambda,
 
   TVectorD resid = A*x - b;
 
-  // and covariance matrices: 
+  // and covariance matrices:
   TMatrixD Wcov = Linv*V*Z*VT*LTi;
   TMatrixD Xcov(nd,nd);
-  for (int i=0; i<nd; i++) {
-    for (int k=0; k<nd; k++) {
+  for (int i=0; i<nd; i++)
+  {
+    for (int k=0; k<nd; k++)
+    {
       Xcov(i,k) = xini(i)*Wcov(i,k)*xini(k);
     }
   }
@@ -1530,24 +1627,34 @@ UnfoldingUtils::UnfoldSVD(double lambda,
   // X inverse (without using Xcov, see eq. 53)
   TMatrixD Xinv(nd, nd);
   double AAjk = 0;
-  for (int j=0; j<nd; j++) {
-    for (int k=0; k<nd; k++) {
+  for (int j=0; j<nd; j++)
+  {
+    for (int k=0; k<nd; k++)
+    {
       AAjk = 0;
-      for (int i=0; i<nd; i++) {
-	AAjk += A(i,j)*A(i,k);
+      for (int i=0; i<nd; i++)
+      {
+        AAjk += A(i,j)*A(i,k);
       }
       Xinv(j,k) = AAjk/xini(j)/xini(k);
     }
   }
-  
+
   // Add components to output list
-  if (output) {
-    TH1D* hs = Vec2Hist(s_vec, 0., nd, Form("hs%d",id), "s_{i} ");
-    TH1D* hd = Vec2Hist(absd,  0., nd, Form("hd%d",id), Form("#||{d_{i}} = #||{(U^{T}b)_{i}}" ));
-    TH1D* hl = Vec2Hist(dlam,  0., nd, Form("hl%d",id), Form("#||{d^{(#lambda)}_{i}}, #lambda = %g ",lambda));
-    TH1D* hw = Vec2Hist(w,     0., nd, Form("hw%d",id), Form("w^{#lambda = %g} ",lambda));
-    TH1D* ht = Vec2Hist(tf,    0., nd, Form("ht%d",id), Form("s_{i}^{2}/(s_{i}^{2}+#lambda^{2}), #lambda = %g ",lambda));
-    TH1D* hr = Vec2Hist(resid, 0., nd, Form("hr%d",id), Form("Ax^{(#lambda)}-b, #lambda = %g ",lambda));
+  if (output)
+  {
+    TH1D *hs = Vec2Hist(s_vec, 0., nd, Form("hs%d",id), "s_{i} ");
+    TH1D *hd = Vec2Hist(absd,  0., nd, Form("hd%d",id), 
+                        Form("#||{d_{i}} = #||{(U^{T}b)_{i}}"));
+    TH1D *hl = Vec2Hist(dlam,  0., nd, Form("hl%d",id), 
+                        Form("#||{d^{(#lambda)}_{i}}, #lambda = %g ",lambda));
+    TH1D *hw = Vec2Hist(w,     0., nd, Form("hw%d",id), 
+                        Form("w^{#lambda = %g} ",lambda));
+    TH1D *ht = Vec2Hist(tf,    0., nd, Form("ht%d",id), 
+                        Form("s_{i}^{2}/(s_{i}^{2}+#lambda^{2}), #lambda = %g ",
+                             lambda));
+    TH1D *hr = Vec2Hist(resid, 0., nd, Form("hr%d",id), 
+                        Form("Ax^{(#lambda)}-b, #lambda = %g ",lambda));
 
     SetTH1Props(hs, kBlack, 0, kBlack, kFullCircle, 1.0);
     SetTH1Props(hd, kBlue,  0, kBlue,  kFullSquare, 1.0);
@@ -1556,11 +1663,12 @@ UnfoldingUtils::UnfoldSVD(double lambda,
     SetTH1Props(ht, kBlack, 0, kBlack, kOpenCircle, 1.0);
 
     // Covariance matrix of solution and its inverse
-    TH2D* hWcov = Matrix2Hist(Wcov, Form("hWcov%d",id), 0, nd, 0, nd);
-    TH2D* hXcov = Matrix2Hist(Xcov, Form("hXcov%d",id), 0, nd, 0, nd);
-    TH2D* hXinv = Matrix2Hist(Xinv, Form("hXinv%d",id), 0, nd, 0, nd);
+    TH2D *hWcov = Matrix2Hist(Wcov, Form("hWcov%d",id), 0, nd, 0, nd);
+    TH2D *hXcov = Matrix2Hist(Xcov, Form("hXcov%d",id), 0, nd, 0, nd);
+    TH2D *hXinv = Matrix2Hist(Xinv, Form("hXinv%d",id), 0, nd, 0, nd);
 
-    for (int i=0; i<nd; i++) {
+    for (int i=0; i<nd; i++)
+    {
       hd->SetBinError(i+1, 1.0);
       hl->SetBinError(i+1, 1.0);
     }
@@ -1574,27 +1682,28 @@ UnfoldingUtils::UnfoldSVD(double lambda,
     output->Add(hXcov);
     output->Add(hXinv);
   }
-  
-  TH1D* hx = Vec2Hist(x,fTrueX1,fTrueX2,Form("hSVD%d",id),
-		      Form("#lambda = %g", lambda));
 
-  for (int i=0; i<nd; i++) {
+  TH1D *hx = Vec2Hist(x,fTrueX1,fTrueX2,Form("hSVD%d",id),
+                      Form("#lambda = %g", lambda));
+
+  for (int i=0; i<nd; i++)
+  {
     hx->SetBinError(i+1, TMath::Sqrt(Xcov(i,i)));
   }
-  
+
   return hx;
 }
 
-TH1D*
+TH1D *
 UnfoldingUtils::UnfoldTLS()
 {
   TMatrixD A = GetA();
   TVectorD b = Getb();
-  
+
   TMatrixD C(fM, fN+1); // C = [A b]
   C.SetSub(0,0,A);
   for (int i=0; i<fM; i++) C(i,fN) = b(i);
-  
+
   TDecompSVD svdc(C);
   TMatrixD V = svdc.GetV();
   TVectorD x(fN);
@@ -1613,7 +1722,7 @@ UnfoldingUtils::UnfoldTLS()
   // TMatrixD X(VAB, TMatrixD::kMult, VBBinv);
   // X *= -1.;
 
-  TH1D* h = new TH1D("hTLS", "hTLS", fN, fTrueX1, fTrueX2);
+  TH1D *h = new TH1D("hTLS", "hTLS", fN, fTrueX1, fTrueX2);
   for (int j=0; j<fN; j++)
     h->SetBinContent(j+1, x(j));
 
@@ -1623,37 +1732,39 @@ UnfoldingUtils::UnfoldTLS()
 UnfoldingResult
 UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations)
 {
-  // See eq. 2.11, J. Bardsley & J. Nagy, 
+  // See eq. 2.11, J. Bardsley & J. Nagy,
   // SIAM. J. MATRIX ANAL. APPL. Vol 27 No. 4, pp. 1184-1197
   // Also
   // SIAM J. SCI. COMPUT. Vol. 25, No. 4, pp. 1326–1343
-  
+
   UnfoldingResult result;
   static int id = 0; id++;       // Unique ID
 
   result.LCurve = new TGraph(nIterations);
   result.GcvCurve = new TGraph(nIterations);
-  result.LCurve->SetNameTitle(Form("LCurve_RL_%d",id), 
-			      Form("Richardson-Lucy L-Curve;"
-				   "Total #chi^{2};"
-				   "Total curvature of x_{k}"));
+  result.LCurve->SetNameTitle(Form("LCurve_RL_%d",id),
+                              Form("Richardson-Lucy L-Curve;"
+                                   "Total #chi^{2};"
+                                   "Total curvature of x_{k}"));
   TMatrixD A = GetA();
   TVectorD b = Getb();
-  TVectorD ones = Ones(fM); 
-  
+  TVectorD ones = Ones(fM);
+
   result.XReg.ResizeTo(fN, nIterations);
   result.WReg.ResizeTo(fN, nIterations);
-  
+
   // Prior vector x0 must be positive
   TVectorD x0 = Ones(fN);
-  if (fHistPrior) 
+  if (fHistPrior)
     x0 = Hist2Vec(fHistPrior);
 
-  for (int j=0; j<x0.GetNrows(); j++) {
-    if (x0(j)<=0) {
+  for (int j=0; j<x0.GetNrows(); j++)
+  {
+    if (x0(j)<=0)
+    {
       Warning("UnfoldingUtils::UnfoldRichardsonLucy()",
-	      "Initial point x0(%d) = %g must be positive, "
-	      "setting to 1.0", j, x0(j) );
+              "Initial point x0(%d) = %g must be positive, "
+              "setting to 1.0", j, x0(j));
       x0(j) = 1.;
     }
   }
@@ -1668,20 +1779,22 @@ UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations)
 
   result.kLcv = 0;
   TVectorD kIter(nIterations);
-  
-  for (int k=0; k<nIterations; k++) {
+
+  for (int k=0; k<nIterations; k++)
+  {
     printf("Richardson-Lucy iteration %d\r", k+1);
     kIter(k) = k+1;
-    
+
     // R-L result for iteration k
     TVectorD xd = ElemDiv(x, AT1);
     x = ElemMult(xd, AT*ElemDiv(b+bvar, A*x + bkg + bvar));
-    for (int j=0; j<fN; j++) {
+    for (int j=0; j<fN; j++)
+    {
       result.WReg(j,k) = x(j);
       result.XReg(j,k) = x(j)*fVecXini(j);
     }
-    
-    // L-Curve    
+
+    // L-Curve
     TVectorD r = A*x-b;
     TVectorD chi2vec = ElemDiv(ElemMult(r,r), bvar);
     result.LCurve->SetPoint(k,chi2vec.Sum(),Curvature(x));
@@ -1698,14 +1811,14 @@ UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations)
   result.lambdaLcv = result.kLcv; // Here, "lambda" is the iteration.
 
   result.WRegHist = Matrix2Hist(result.WReg, Form("W_RL_%d",id),
-				fTrueX1,fTrueX2,0,nIterations);
+                                fTrueX1,fTrueX2,0,nIterations);
   result.WRegHist->GetXaxis()->CenterTitle();
   result.WRegHist->GetYaxis()->CenterTitle();
   result.WRegHist->GetXaxis()->SetTitleOffset(1.8);
   result.WRegHist->GetYaxis()->SetTitleOffset(1.8);
 
   result.XRegHist = Matrix2Hist(result.XReg, Form("X_RL_%d",id),
-				fTrueX1,fTrueX2,0,nIterations);
+                                fTrueX1,fTrueX2,0,nIterations);
   result.XRegHist->GetXaxis()->CenterTitle();
   result.XRegHist->GetYaxis()->CenterTitle();
   result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
@@ -1715,32 +1828,32 @@ UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations)
 }
 
 UnfoldingResult
-UnfoldingUtils::UnfoldPCGLS(const int nIterations, 
-			    int LType,
-			    TString opt,
-			    const GSVDResult* gsvd,
-			    const TH2* hA,
-			    const TH1* hb,
-			    const TH1* hXini)
+UnfoldingUtils::UnfoldPCGLS(const int nIterations,
+                            int ltype,
+                            TString opt,
+                            const GSVDResult *gsvd,
+                            const TH2 *hA,
+                            const TH1 *hb,
+                            const TH1 *hXini)
 {
-  TMatrixD L = LMatrix(fN, LType);
-  return UnfoldPCGLS(nIterations, 
-		     L,
-		     opt,
-		     gsvd,
-		     hA,
-		     hb,
-		     hXini);
+  TMatrixD L = LMatrix(fN, ltype);
+  return UnfoldPCGLS(nIterations,
+                     L,
+                     opt,
+                     gsvd,
+                     hA,
+                     hb,
+                     hXini);
 }
 
 UnfoldingResult
-UnfoldingUtils::UnfoldPCGLS(const int nIterations, 
-			    TMatrixD& L,
-			    TString opt,
-			    const GSVDResult* gsvd,
-			    const TH2* hA,
-			    const TH1* hb,
-			    const TH1* hXini)
+UnfoldingUtils::UnfoldPCGLS(const int nIterations,
+                            TMatrixD &L,
+                            TString opt,
+                            const GSVDResult *gsvd,
+                            const TH2 *hA,
+                            const TH1 *hb,
+                            const TH1 *hXini)
 {
   //
   // Key ingredients and their dimensions
@@ -1765,25 +1878,26 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
   TMatrixD A = GetA(opt);
   TVectorD b = Getb(opt);
   TVectorD xini(fVecXini);
-  double x1 = fTrueX1, x2 = fTrueX2;
+//  double x1 = fTrueX1, x2 = fTrueX2;
   if (hA) A = Hist2Matrix(hA);
   if (hb) b = Hist2Vec(hb);
-  if (hXini) {
-    x1 = hXini->GetXaxis()->GetXmin();
-    x2 = hXini->GetXaxis()->GetXmax();
+  if (hXini)
+  {
+    // x1 = hXini->GetXaxis()->GetXmin();
+    // x2 = hXini->GetXaxis()->GetXmax();
     xini = Hist2Vec(hXini);
   }
 
   TMatrixD W = Null(L);          // Nullspace of L
   int p = L.GetNrows();
- 
+
   TVectorD g2(fN);
   if (gsvd)
     g2 = ElemMult(gsvd->gamma, gsvd->gamma);
   TMatrixD B(fMatB);
-  if (opt.Contains("~")) 
+  if (opt.Contains("~"))
     B.UnitMatrix();
-  
+
   // Columns are filter factors at iteration k
   result.F.ResizeTo(fN,nIterations);
   TVectorD Fd(fN);
@@ -1799,16 +1913,16 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
 
   result.LCurve = new TGraph(nIterations);
   result.GcvCurve = new TGraph(nIterations);
-  
-  result.LCurve->SetNameTitle(Form("LCurve_PCGLS_%d",id), 
-			      Form("PCGLS L-Curve;"
-				   "Residual norm ||Ax_{k}-b||_{2};"
-				   "Solution norm ||Lx_{k}||_{2}"));
-  result.GcvCurve->SetNameTitle(Form("GcvCurve_PCGLS_%d",id), 
-				Form("PCGLS GCV Curve;"
-				     "Iteration k;"
-				     "G(k)"));
-  
+
+  result.LCurve->SetNameTitle(Form("LCurve_PCGLS_%d",id),
+                              Form("PCGLS L-Curve;"
+                                   "Residual norm ||Ax_{k}-b||_{2};"
+                                   "Solution norm ||Lx_{k}||_{2}"));
+  result.GcvCurve->SetNameTitle(Form("GcvCurve_PCGLS_%d",id),
+                                Form("PCGLS GCV Curve;"
+                                     "Iteration k;"
+                                     "G(k)"));
+
   // Store q1 vectors as columns of Q1n for re-orthogonalization
   TMatrixD Q1n(p, nIterations+1);
 
@@ -1816,7 +1930,8 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
   // T = dagger(AW)*A and x0 = W*dagger(AW)*b
   TMatrixD T(0,0);
   TVectorD x0(fN); x0.Zero();
-  if (W.GetNcols()>0) { // if L has a nontrivial null space
+  if (W.GetNcols()>0)   // if L has a nontrivial null space
+  {
     TMatrixD AW(A*W);
     TMatrixD AWinv = MoorePenroseInverse(AW);
     T.ResizeTo(AWinv.GetNrows(), fN);
@@ -1841,8 +1956,9 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
   double q1norm = TMath::Sqrt(q1*q1);
   if (q1norm > 0) q1norm = 1./q1norm;
   TMatrixDColumn(Q1n, 0) = q1norm*q1;
-  
-  for (int k=1; k<=nIterations; k++) {
+
+  for (int k=1; k<=nIterations; k++)
+  {
     printf("PCGLS iteration %d\r", k);
     TVectorD Az = A*z;
     alpha = dq / Az.Norm2Sqr();
@@ -1852,14 +1968,15 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
     LTSolve(q1, L, s);
 
     // Reorthogonalize q1 to previous q1 vectors
-    for (int i=0; i<k; i++) {
+    for (int i=0; i<k; i++)
+    {
       TVectorD qi = TMatrixDColumn(Q1n, i);
       q1 -= (qi*q1)*qi; // Modified Graham-Schmidt
       q1norm = TMath::Sqrt(q1*q1);
       if (q1norm > 0) q1norm = 1./q1norm;
       TMatrixDColumn(Q1n, k) = q1norm*q1;
     }
-      
+
     LSolve(q, L, q1, W, T);
     dq2 = s*q;
     beta = dq2/dq;
@@ -1878,76 +1995,85 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
     result.LCurve->SetPoint(k-1, TMath::Sqrt(r*r), TMath::Sqrt((L*x)*(L*x)));
 
     // Filter factors (if GSVD gamma values available)
-    if (gsvd) {
-      
-      if (k==1) {
-	fk = alpha*g2;
-	Fd = g2 - ElemMult(g2, fk) + beta*g2;
-	TMatrixDColumn(result.F, k-1) = fk;
-      }
-      else {
-	fk += alpha*Fd;
-	Fd = g2 - ElemMult(g2, fk) + beta*Fd;
-	TMatrixDColumn(result.F, k-1) = fk;
-      }
-      if (k > 2) {
-	for (int i=0; i<fN; i++) {
-	  if (TMath::Abs(result.F(i,k-2)-1) < 1e-4)
-	    result.F(i,k-1) = 1.0;
-	  if (TMath::Abs(result.F(i,k-3)-1) < 1e-4)
-	    result.F(i,k-1) = 1.0;
+    if (gsvd)
+    {
 
-	  if (result.F(i,k-1) > 1.)
-	    result.F(i,k-1) = 1.0;
-
-	  fk(i) = result.F(i,k-1);
-	}
+      if (k==1)
+      {
+        fk = alpha*g2;
+        Fd = g2 - ElemMult(g2, fk) + beta*g2;
+        TMatrixDColumn(result.F, k-1) = fk;
       }
-      
+      else
+      {
+        fk += alpha*Fd;
+        Fd = g2 - ElemMult(g2, fk) + beta*Fd;
+        TMatrixDColumn(result.F, k-1) = fk;
+      }
+      if (k > 2)
+      {
+        for (int i=0; i<fN; i++)
+        {
+          if (TMath::Abs(result.F(i,k-2)-1) < 1e-4)
+            result.F(i,k-1) = 1.0;
+          if (TMath::Abs(result.F(i,k-3)-1) < 1e-4)
+            result.F(i,k-1) = 1.0;
+
+          if (result.F(i,k-1) > 1.)
+            result.F(i,k-1) = 1.0;
+
+          fk(i) = result.F(i,k-1);
+        }
+      }
+
       // Generalized cross-validation curve
       TVectorD resid = A*x - b;
       double gcv = TMath::Sqrt(resid*resid) / (fM - fk.Sum());
       result.GcvCurve->SetPoint(k-1, k, gcv);
-      if (gcv < gcvMin) {
-	gcvMin = gcv;
-	result.kGcv = k;
+      if (gcv < gcvMin)
+      {
+        gcvMin = gcv;
+        result.kGcv = k;
       }
-      
+
       // Compute A^#, the regularized inverse of A, using these filter
       // factors.
       TMatrixD FCd(fN,fN);
       TMatrixD UT(TMatrixD::kTransposed, gsvd->U);
-      for (int i=0; i<fN; i++) {
-	double a = gsvd->alpha(i);
-	FCd(i,i) = (a > 0.) ? result.F(i,k-1)/a : 0.;
+      for (int i=0; i<fN; i++)
+      {
+        double a = gsvd->alpha(i);
+        FCd(i,i) = (a > 0.) ? result.F(i,k-1)/a : 0.;
       }
       TMatrixD Ap = gsvd->X * FCd * UT;
-      
+
       // Covariance matrices:
       // Cov(w) = Ap*B*Ap'
-      // Cov(x)_ik = xini_i Cov(w)_ik xini_k 
+      // Cov(x)_ik = xini_i Cov(w)_ik xini_k
       result.wCov = Ap * TMatrixD(B, TMatrixD::kMultTranspose, Ap);
-      for (int i=0; i<fN; i++) {
-	for (int j=0; j<fN; j++) {
-	  result.xCov(i,j) = fVecXini(i) * result.wCov(i,j) * fVecXini(j);
-	}
+      for (int i=0; i<fN; i++)
+      {
+        for (int j=0; j<fN; j++)
+        {
+          result.xCov(i,j) = fVecXini(i) * result.wCov(i,j) * fVecXini(j);
+        }
       }
-      
+
       // Assign uncertainty
       for (int j=0; j<fN; j++)
-	result.WRegErr(j,k-1) = result.wCov(j,j);
+        result.WRegErr(j,k-1) = result.wCov(j,j);
       for (int j=0; j<fN; j++)
-	result.XRegErr(j,k-1) = result.xCov(j,j);
-      
+        result.XRegErr(j,k-1) = result.xCov(j,j);
+
     }
-    
+
   } // end iteration loop
-  
+
   cout << endl;
-  
+
   // Solutions to Atilde*w = btilde
   result.WRegHist = Matrix2Hist(result.WReg, Form("W_CG_%d",id),
-				fTrueX1, fTrueX2,0,nIterations);
+                                fTrueX1, fTrueX2,0,nIterations);
   result.WRegHist->GetXaxis()->CenterTitle();
   result.WRegHist->GetYaxis()->CenterTitle();
   result.WRegHist->GetXaxis()->SetTitleOffset(1.8);
@@ -1956,7 +2082,7 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
 
   // Solutions x_j = w_j * xini_j
   result.XRegHist = Matrix2Hist(result.XReg, Form("X_CG_%d",id),
-				fTrueX1, fTrueX2,0,nIterations);
+                                fTrueX1, fTrueX2,0,nIterations);
   result.XRegHist->GetXaxis()->CenterTitle();
   result.XRegHist->GetYaxis()->CenterTitle();
   result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
@@ -1965,28 +2091,30 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
   result.XRegHist->SetTitle("CGLS solutions x_{k};x;iteration k");
 
   // Add uncertainties
-  TH2D* errw = Matrix2Hist(result.WRegErr, Form("errW_CG_%d",id),
-			   fTrueX1, fTrueX2,0,nIterations);
-  TH2D* errx = Matrix2Hist(result.XRegErr, Form("errX_CG_%d",id),
-			   fTrueX1, fTrueX2,0,nIterations);
+  TH2D *errw = Matrix2Hist(result.WRegErr, Form("errW_CG_%d",id),
+                           fTrueX1, fTrueX2,0,nIterations);
+  TH2D *errx = Matrix2Hist(result.XRegErr, Form("errX_CG_%d",id),
+                           fTrueX1, fTrueX2,0,nIterations);
 
-  for (int j=1; j<=fN; j++) {
-    for (int k=1; k<nIterations; k++) {
+  for (int j=1; j<=fN; j++)
+  {
+    for (int k=1; k<nIterations; k++)
+    {
       result.WRegHist->SetBinError(j,k,errw->GetBinContent(j,k));
       result.XRegHist->SetBinError(j,k,errx->GetBinContent(j,k));
     }
   }
 
-  result.hGcv = 
+  result.hGcv =
     result.XRegHist->ProjectionX(Form("cg_%d_iter%d",id,result.kGcv),
-				 result.kGcv,result.kGcv);
-  
+                                 result.kGcv,result.kGcv);
+
   return result;
 }
 
-void 
-UnfoldingUtils::LSolve(TVectorD& result, const TMatrixD& L, const TVectorD& y, 
-		       const TMatrixD& W, const TMatrixD& T)
+void
+UnfoldingUtils::LSolve(TVectorD &result, const TMatrixD &L, const TVectorD &y,
+                       const TMatrixD &W, const TMatrixD &T)
 {
   // Computes  x = L_p*y
   // where L_p is the A-weighted generalized inverse of L.
@@ -1995,61 +2123,67 @@ UnfoldingUtils::LSolve(TVectorD& result, const TMatrixD& L, const TVectorD& y,
   int ly = y.GetNoElements();
 
   if (ly != p)
-    gROOT->Warning("LSolve()", 
-		   "Input vector length = %d != %d", ly, p);
-  if (p==n) {
+    gROOT->Warning("LSolve()",
+                   "Input vector length = %d != %d", ly, p);
+  if (p==n)
+  {
     TMatrixD Linv(TMatrixD::kInverted, L);
     TVectorD x = Linv * y;
     result = x;
     return;
   }
-  
-  if (p > n) {
+
+  if (p > n)
+  {
     TMatrixD Ltmp = L;
     TMatrixD Linv = MoorePenroseInverse(Ltmp);
     TVectorD x = Linv * y;
     result = x;
     return;
   }
-  else {
+  else
+  {
     TMatrixD L11(L); L11.ResizeTo(p,p);
     TMatrixD T11(T); T11.ResizeTo(n-p,p);
     TMatrixD L11inv = MoorePenroseInverse(L11);
     TVectorD xhat = L11inv * y;
     TVectorD xhat0 = xhat;
     xhat0.ResizeTo(n); // Append n-p 0's
-    TVectorD x = xhat0 - W*T11*xhat; 
+    TVectorD x = xhat0 - W*T11*xhat;
     result.ResizeTo(x.GetNoElements());
     result = x;
   }
   return;
 }
 
-void 
-UnfoldingUtils::LTSolve(TVectorD& result, const TMatrixD& L, const TVectorD& y)
+void
+UnfoldingUtils::LTSolve(TVectorD &result, const TMatrixD &L, const TVectorD &y)
 {
   // Computes  x = (L_p)'*y
   // where L_p is the generalized inverse of L (aka L_A^dagger)
-  
+
   int p = L.GetNrows();
   int n = L.GetNcols();
   int ly = y.GetNoElements();
-  
+
   result.Zero();
-  
-  if (p == n) {
+
+  if (p == n)
+  {
     TMatrixD LT(L);
     LT.Invert();
     LT.T();
     result = LT * y;
     return;
   }
-  if (p > n) {
+  if (p > n)
+  {
     TMatrixD LT(L); LT.T();
     result = MoorePenroseInverse(LT) * y;
     return;
   }
-  else {
+  else
+  {
 
     TVectorD y1(y);
     TMatrixD L11(L);
@@ -2061,50 +2195,54 @@ UnfoldingUtils::LTSolve(TVectorD& result, const TMatrixD& L, const TVectorD& y)
     L11.T();
     result = L11 * y1;
 
-    if (0) {
+    if (0)
+    {
       Printf("p, n, ly = %d, %d, %d", p, n, ly);
-      Printf("y, y1, result: %d, %d, %d", 
-	     y.GetNoElements(),
-	     y1.GetNoElements(), 
-	     result.GetNoElements());
-      Printf("L11 (%d x %d)", 
-	     L11.GetNrows(), L11.GetNcols());
+      Printf("y, y1, result: %d, %d, %d",
+             y.GetNoElements(),
+             y1.GetNoElements(),
+             result.GetNoElements());
+      Printf("L11 (%d x %d)",
+             L11.GetNrows(), L11.GetNcols());
     }
 
   }
   return;
 }
 
-TMatrixD 
-UnfoldingUtils::MoorePenroseInverse(TMatrixD& A, double tol)
+TMatrixD
+UnfoldingUtils::MoorePenroseInverse(TMatrixD &A, double tol)
 {
   // Compute the Moore-Penrose (pseudo)inverse of A as
   // V*diag(1/sigma_i)*U' (Numerical Recipes eq 2.6.6)
   // Inverse singular values < tol are zeroed.
   int m = A.GetNrows(), n = A.GetNcols();
   int max = m;
-  if (n>max) 
+  if (n>max)
     max = n;
   // Get SVD components
   TDecompSVD decomp;
-  
-  if (m<n) {
+
+  if (m<n)
+  {
     TMatrixD B(A);
     B.ResizeTo(n,n);
     decomp.SetMatrix(B);
   }
-  else {
+  else
+  {
     decomp.SetMatrix(A);
   }
-  
+
   TMatrixD UT = decomp.GetU(); UT.T();
   TVectorD sig = decomp.GetSig();
   TMatrixD V = decomp.GetV();
   TMatrixD Siginv(max,max);
- 
+
   V.ResizeTo(max,max);
 
-  for (int i=0; i<n; i++) {
+  for (int i=0; i<n; i++)
+  {
     if (sig(i) > tol)
       Siginv(i,i) = 1./sig(i);
     else
@@ -2117,8 +2255,8 @@ UnfoldingUtils::MoorePenroseInverse(TMatrixD& A, double tol)
   return Ainv;
 }
 
-TGraph*
-UnfoldingUtils::LogCurvature(TGraph* g, const TVectorD& tVec, int& kMax)
+TGraph *
+UnfoldingUtils::LogCurvature(TGraph *g, const TVectorD &tVec, int &kMax)
 {
   // Compute signed log curvature of the parametric curve
   // g(t) = (a(t), b(t))
@@ -2127,11 +2265,12 @@ UnfoldingUtils::LogCurvature(TGraph* g, const TVectorD& tVec, int& kMax)
   // kMax is the index of the maximum point.
 
   int n = g->GetN();
-  TGraph* gk = new TGraph(n-2);
+  TGraph *gk = new TGraph(n-2);
 
   TVectorD x(n);
   TVectorD y(n);
-  for (int i=0; i<n; i++) {
+  for (int i=0; i<n; i++)
+  {
     x(i) = TMath::Log10(g->GetX()[i]);
     y(i) = TMath::Log10(g->GetY()[i]);
   }
@@ -2152,26 +2291,30 @@ UnfoldingUtils::LogCurvature(TGraph* g, const TVectorD& tVec, int& kMax)
   TVectorD y2(n-2);
 
   // First derivatives
-  for (int i=0; i<n-1; i++) {
-    x1(i) = (x(i+1) - x(i)) / (tVec(i+1) - tVec(i)); 
-    y1(i) = (y(i+1) - y(i)) / (tVec(i+1) - tVec(i)); 
+  for (int i=0; i<n-1; i++)
+  {
+    x1(i) = (x(i+1) - x(i)) / (tVec(i+1) - tVec(i));
+    y1(i) = (y(i+1) - y(i)) / (tVec(i+1) - tVec(i));
   }
   // Second derivatives
-  for (int i=0; i<n-2; i++) {
-    x2(i) = (x1(i+1) - x1(i)) / (tVec(i+1) - tVec(i)); 
-    y2(i) = (y1(i+1) - y1(i)) / (tVec(i+1) - tVec(i)); 
+  for (int i=0; i<n-2; i++)
+  {
+    x2(i) = (x1(i+1) - x1(i)) / (tVec(i+1) - tVec(i));
+    y2(i) = (y1(i+1) - y1(i)) / (tVec(i+1) - tVec(i));
   }
 
   // Compute curvature vs. t
   double cmax = -1e99;
-  for (int i=0; i<n-2; i++) {
+  for (int i=0; i<n-2; i++)
+  {
     double numer = x1(i)*y2(i) - x2(i)*y1(i);
     double denom = TMath::Power(x1(i)*x1(i) + y1(i)*y1(i), 1.5);
     double c = numer / denom;
     gk->SetPoint(i, tVec(i), c);
 
     // Find maximum curvature and its array position
-    if (c>cmax) {
+    if (c>cmax)
+    {
       cmax = c;
       kMax = i;
     }
@@ -2189,100 +2332,110 @@ UnfoldingUtils::Ones(int n)
   return ones;
 }
 
-TVectorD 
-UnfoldingUtils::ElemDiv(const TVectorD& x, const TVectorD& y, double div0val)
+TVectorD
+UnfoldingUtils::ElemDiv(const TVectorD &x, const TVectorD &y, double div0val)
 {
   int nx = x.GetNoElements();
   int ny = y.GetNoElements();
-  if (nx != ny) {
+  if (nx != ny)
+  {
     gROOT->Error("ElemDiv()", "mismatch nx=%d, ny=%d", nx, ny);
     gSystem->Exit(-1);
   }
   TVectorD result(nx);
-  for (int i=0; i<nx; i++) {
+  for (int i=0; i<nx; i++)
+  {
     result(i) = (y(i) > 1e-15) ? x(i) / y(i) : div0val;
   }
   return result;
 }
 
-TVectorD 
-UnfoldingUtils::ElemMult(const TVectorD& x, const TVectorD& y)
+TVectorD
+UnfoldingUtils::ElemMult(const TVectorD &x, const TVectorD &y)
 {
   int nx = x.GetNoElements();
   int ny = y.GetNoElements();
-  if (nx != ny) {
+  if (nx != ny)
+  {
     gROOT->Error("ElemMult()", "mismatch nx=%d, ny=%d", nx, ny);
     gSystem->Exit(-1);
   }
   TVectorD result(nx);
-  for (int i=0; i<nx; i++) {
+  for (int i=0; i<nx; i++)
+  {
     result(i) = x(i)*y(i);
   }
   return result;
 }
 
-TMatrixD 
-UnfoldingUtils::DivColsByVector(const TMatrixD& M, const TVectorD& v,
-				bool makeZeroIfNaN)
+TMatrixD
+UnfoldingUtils::DivColsByVector(const TMatrixD &M, const TVectorD &v,
+                                bool makeZeroIfNaN)
 {
   // Divide M columns by v elementwise: R(i,j) = M(i,j) / v(i).
-  // I.e. each row i is scaled by 1/v(i). 
+  // I.e. each row i is scaled by 1/v(i).
   TMatrixD R(M);
   int m = R.GetNrows(), n = R.GetNcols();
 
   if (v.GetNoElements() != m)
-    Error("UnfoldingUtils::DivColsByVector()", 
-	  "nrows %d != vector size %d", m, v.GetNoElements());
-  
-  for (int i=0; i<m; i++) {
-    for (int j=0; j<n; j++) {
-      if (v(i) != 0) 
-	R(i,j) /= v(i);
-      else if (makeZeroIfNaN) 
-	R(i,j) = 0;
+    Error("UnfoldingUtils::DivColsByVector()",
+          "nrows %d != vector size %d", m, v.GetNoElements());
+
+  for (int i=0; i<m; i++)
+  {
+    for (int j=0; j<n; j++)
+    {
+      if (v(i) != 0)
+        R(i,j) /= v(i);
+      else if (makeZeroIfNaN)
+        R(i,j) = 0;
     }
   }
   return R;
 }
 
-TMatrixD 
-UnfoldingUtils::DivRowsByVector(const TMatrixD& M, const TVectorD& v,
-				bool makeZeroIfNaN)
+TMatrixD
+UnfoldingUtils::DivRowsByVector(const TMatrixD &M, const TVectorD &v,
+                                bool makeZeroIfNaN)
 {
   // Divide M rows by v elementwise: R(i,j) = M(i,j) / v(j).
-  // I.e. each column j is scaled by 1/v(j). 
+  // I.e. each column j is scaled by 1/v(j).
   TMatrixD R(M);
   int m = R.GetNrows(), n = R.GetNcols();
 
   if (v.GetNoElements() != n)
-    Error("UnfoldingUtils::DivRowsByVector()", 
-	  "nrows %d != vector size %d", n, v.GetNoElements());
-  
-  for (int i=0; i<m; i++) {
-    for (int j=0; j<n; j++) {
-      if (v(j) != 0) 
-	R(i,j) /= v(j);
-      else if (makeZeroIfNaN) 
-	R(i,j) = 0;
+    Error("UnfoldingUtils::DivRowsByVector()",
+          "nrows %d != vector size %d", n, v.GetNoElements());
+
+  for (int i=0; i<m; i++)
+  {
+    for (int j=0; j<n; j++)
+    {
+      if (v(j) != 0)
+        R(i,j) /= v(j);
+      else if (makeZeroIfNaN)
+        R(i,j) = 0;
     }
   }
   return R;
 }
 
-TMatrixD 
-UnfoldingUtils::MultRowsByVector(const TMatrixD& M, const TVectorD& v)
+TMatrixD
+UnfoldingUtils::MultRowsByVector(const TMatrixD &M, const TVectorD &v)
 {
   // Multiply M rows by v elementwise: R(i,j) = M(i,j) * v(j).
-  // I.e. each column j is scaled by v(j). 
+  // I.e. each column j is scaled by v(j).
   TMatrixD R(M);
   int m = R.GetNrows(), n = R.GetNcols();
 
   if (v.GetNoElements() != n)
-    Error("UnfoldingUtils::MultRowsByVector()", 
-	  "ncols %d != vector size %d", n, v.GetNoElements());
-  
-  for (int i=0; i<m; i++) {
-    for (int j=0; j<n; j++) {
+    Error("UnfoldingUtils::MultRowsByVector()",
+          "ncols %d != vector size %d", n, v.GetNoElements());
+
+  for (int i=0; i<m; i++)
+  {
+    for (int j=0; j<n; j++)
+    {
       R(i,j) *= v(j);
     }
   }
@@ -2290,19 +2443,20 @@ UnfoldingUtils::MultRowsByVector(const TMatrixD& M, const TVectorD& v)
 }
 
 
-TH1D* 
-UnfoldingUtils::XHist(TVectorD& x, TString base, int k, 
-		      double xMin, double xMax,
-		      double normto, TString /*opt*/)
+TH1D *
+UnfoldingUtils::XHist(TVectorD &x, TString base, int k,
+                      double xMin, double xMax,
+                      double normto, TString /*opt*/)
 {
   // base should have a form like "CGLS"+"id"
   // k is the iteration step
   // The factor normto could be hb->Integral();
-  const char* name  = Form("h%s_%d", base.Data(), k);
-  const char* title = Form("%s (%d iterations)", base.Data(), k);
-  TH1D* hx = Vec2Hist(x, xMin, xMax, name, title);
+  const char *name  = Form("h%s_%d", base.Data(), k);
+  const char *title = Form("%s (%d iterations)", base.Data(), k);
+  TH1D *hx = Vec2Hist(x, xMin, xMax, name, title);
 
-  if (normto != 0.0) {
+  if (normto != 0.0)
+  {
     double norm = hx->Integral() ? normto/hx->Integral() : 0;
     hx->Scale(norm);
   }
@@ -2310,7 +2464,7 @@ UnfoldingUtils::XHist(TVectorD& x, TString base, int k,
   return hx;
 }
 
-TMatrixD 
+TMatrixD
 UnfoldingUtils::Toeplitz(int m1, int n1, double col[], double row[])
 {
   // Return a Toeplitz matrix T constructed from col[] (size m+1) and
@@ -2325,17 +2479,20 @@ UnfoldingUtils::Toeplitz(int m1, int n1, double col[], double row[])
   // c[m+1] = {t[0], t[-1], t[-2], ..., t[-m]} (i.e. t[-i] = c[i])
   // r[n+1] = {t[0], t[1],  t[2],  ..., t[n]}  (i.e. t[j]  = r[j])
 
-  if (col[0] != row[0]) {
-    Warning("UnfoldingUtils::Toeplitz()", 
-	    "col[0] (%f) != row[0] (%f). Using col[0].", 
-	    col[0], row[0]);
+  if (col[0] != row[0])
+  {
+    Warning("UnfoldingUtils::Toeplitz()",
+            "col[0] (%f) != row[0] (%f). Using col[0].",
+            col[0], row[0]);
   }
-  
+
   TMatrixD T(m1, n1);
   T(0, 0) = col[0];
-  for (int i=0; i<m1; i++) {
-    for (int j=0; j<n1; j++) {
-      if     (i==j)  T(i, j) = col[0];
+  for (int i=0; i<m1; i++)
+  {
+    for (int j=0; j<n1; j++)
+    {
+      if (i==j)  T(i, j) = col[0];
       else if (i>j)  T(i, j) = col[i-j];
       else if (i<j)  T(i, j) = row[j-i];
     }
@@ -2343,7 +2500,7 @@ UnfoldingUtils::Toeplitz(int m1, int n1, double col[], double row[])
   return T;
 }
 
-TMatrixD 
+TMatrixD
 UnfoldingUtils::LMatrix(const int n, const int kind, double eps)
 {
   // Return p x n smoothing matrix. The number of rows p is
@@ -2354,20 +2511,23 @@ UnfoldingUtils::LMatrix(const int n, const int kind, double eps)
   double row[n];
   for (int j=0; j<n; j++) row[j]=0.0;
 
-  if (kind == kUnitMatrix) { // n x n identity matrix. p = n. W=0.
+  if (kind == kUnitMatrix)   // n x n identity matrix. p = n. W=0.
+  {
     double col[n];
     for (int i=0; i<n; i++) col[i]=0.0;
     row[0] = col[0] = 1;
     return Toeplitz(n,n,col,row);
   }
-  if (kind == k1DerivNoBC) { // 1st deriv, no BC assumptions. p = n-1. W=const.
+  if (kind == k1DerivNoBC)   // 1st deriv, no BC assumptions. p = n-1. W=const.
+  {
     double col[n-1];
     for (int i=0; i<n-1; i++) col[i]=0.0;
     row[0] = col[0] = -1;
     row[1] = 1;
     return Toeplitz(n-1,n,col,row);
   }
-  if (kind == k2DerivNoBC) { // 2nd deriv, no BC assumptions. p = n-2. W=const, linear.
+  if (kind == k2DerivNoBC)   // 2nd deriv, no BC assumptions. p = n-2. W=const, linear.
+  {
     double col[n-2];
     for (int i=0; i<n-2; i++) col[i]=0.0;
     row[0] = col[0] = 1;
@@ -2375,28 +2535,32 @@ UnfoldingUtils::LMatrix(const int n, const int kind, double eps)
     row[2] = 1;
     return Toeplitz(n-2,n,col,row);
   }
-  if (kind == k1DerivBC0) { // 1st deriv, BC=0 on L and R. p = n+1. W=0.
+  if (kind == k1DerivBC0)   // 1st deriv, BC=0 on L and R. p = n+1. W=0.
+  {
     double col[n+1];
     for (int i=0; i<n+1; i++) col[i]=0.0;
     row[0] = col[0] = 1;
     col[1] = -1;
     return Toeplitz(n+1,n,col,row);
   }
-  if (kind == k2DerivBC0) { // 2nd deriv, BC=0 on L and R. p = n. W=0.
+  if (kind == k2DerivBC0)   // 2nd deriv, BC=0 on L and R. p = n. W=0.
+  {
     double col[n];
     for (int i=0; i<n; i++) col[i]=0.0;
     row[0] = col[0] = -2+eps;
     row[1] = col[1] = 1;
     return Toeplitz(n,n,col,row);
   }
-  if (kind == k1DerivBCR) { // 1st deriv, reflect at L,R. p = n-1. W=const. Same as k1DerivNoBC
+  if (kind == k1DerivBCR)   // 1st deriv, reflect at L,R. p = n-1. W=const. Same as k1DerivNoBC
+  {
     double col[n-1];
     for (int i=0; i<n-1; i++) col[i]=0.0;
     row[0] = col[0] = -1;
     row[1] = 1;
     return Toeplitz(n-1,n,col,row);
   }
-  if (kind == k2DerivBCR) { // 2nd deriv, reflect at L,R. p = n. W=const.
+  if (kind == k2DerivBCR)   // 2nd deriv, reflect at L,R. p = n. W=const.
+  {
     double col[n];
     for (int i=0; i<n; i++) col[i]=0.0;
     row[0] = col[0] = -2+eps;
@@ -2413,7 +2577,7 @@ UnfoldingUtils::LMatrix(const int n, const int kind, double eps)
 }
 
 int
-UnfoldingUtils::Rank(TMatrixD& A)
+UnfoldingUtils::Rank(TMatrixD &A)
 {
   // Not very efficient, could replace with a rank-revealing QR
   // algorithm.
@@ -2423,8 +2587,8 @@ UnfoldingUtils::Rank(TMatrixD& A)
   return rank;
 }
 
-TMatrixD 
-UnfoldingUtils::Null(TMatrixD& A)
+TMatrixD
+UnfoldingUtils::Null(TMatrixD &A)
 {
   // Return matrix whose columns form the orthonormal basis for the
   // nullspace of A. Perform SVD on A so that A = USV'. The columns of
@@ -2439,42 +2603,47 @@ UnfoldingUtils::Null(TMatrixD& A)
   // Get SVD components
   TDecompSVD decomp;
 
-  if (m<n) {
+  if (m<n)
+  {
     TMatrixD B = A;
     B.ResizeTo(n,n);
     decomp.SetMatrix(B);
   }
-  else {
+  else
+  {
     decomp.SetMatrix(A);
   }
 
   TVectorD sig = decomp.GetSig();
   TMatrixD V = decomp.GetV();
-  
-  if (0) {  
+
+  if (0)
+  {
     sig.Print();
     V.Print();
   }
-  
+
   int ndim = 0;
-  for (int i=0; i<sig.GetNoElements(); i++) {
-    if (sig(i) < 1e-16) {
+  for (int i=0; i<sig.GetNoElements(); i++)
+  {
+    if (sig(i) < 1e-16)
+    {
       ndim++;
       W.ResizeTo(n, ndim);
       TMatrixDColumn(W,ndim-1) = TMatrixDColumn(V, i);
     }
   }
-  
+
   return W;
 }
 
-void 
-UnfoldingUtils::SetTH1Props(TH1* h,
-			    Int_t linecolor,
-			    Int_t fillcolor,
-			    Int_t markercolor,
-			    Int_t markerstyle,
-			    Double_t markersize) 
+void
+UnfoldingUtils::SetTH1Props(TH1 *h,
+                            Int_t linecolor,
+                            Int_t fillcolor,
+                            Int_t markercolor,
+                            Int_t markerstyle,
+                            Double_t markersize)
 {
   h->SetLineColor(linecolor);
   h->SetFillColor(fillcolor);
@@ -2483,47 +2652,49 @@ UnfoldingUtils::SetTH1Props(TH1* h,
   h->SetMarkerSize(markersize);
 }
 
-TH2D* 
-UnfoldingUtils::BandedDiagonalMatrix(TH1* hDpt, 
-				     const int nMeas, 
-				     const int nTrue, 
-				     double xm1, 
-				     double xm2, 
-				     double xt1, 
-				     double xt2)
+TH2D *
+UnfoldingUtils::BandedDiagonalMatrix(TH1 *hDpt,
+                                     const int nMeas,
+                                     const int nTrue,
+                                     double xm1,
+                                     double xm2,
+                                     double xt1,
+                                     double xt2)
 {
   // Make a bkg matrix by repeating dpt bins along diagonals.
-  // zerobin holds the (0,0) element, = firstCol[0] = firstRow[0]. 
+  // zerobin holds the (0,0) element, = firstCol[0] = firstRow[0].
   // nMeas must be <= the number of positive pt bins.
   // nTrue must be <= the number of negative pt bins.
-   
+
   int zerobin = hDpt->FindBin(1e-6); // index of 1st positive bin
   double dptIntegral = hDpt->Integral();
-  double wdpt = hDpt->GetBinWidth(1); 
+  double wdpt = hDpt->GetBinWidth(1);
   double firstRow[9999] = {0};
   double firstCol[9999] = {0};
   int ip=0;
-  
+
   // Check for acceptable setup
   int nNegBins = zerobin-1;          // binning along true TH2 axis
   int nPosBins = hDpt->GetNbinsX() - nNegBins;  // "  meas TH2 axis
   if (nNegBins < 1)
-    Error("UnfoldingUtils::BandedDiagonalMatrix()", 
-	  "nNegBins < 1 (%d)", nNegBins);
+    Error("UnfoldingUtils::BandedDiagonalMatrix()",
+          "nNegBins < 1 (%d)", nNegBins);
   if (nMeas > nPosBins)
-    Error("UnfoldingUtils::BandedDiagonalMatrix()", 
-	  "nMeas (%d) > nPosBins (%d)", nMeas, nPosBins);
+    Error("UnfoldingUtils::BandedDiagonalMatrix()",
+          "nMeas (%d) > nPosBins (%d)", nMeas, nPosBins);
   if (nTrue >= zerobin)
-    Error("UnfoldingUtils::BandedDiagonalMatrix()", 
-	  "nTrue (%d) > nNegBins (%d)", nTrue, nNegBins);
-  
+    Error("UnfoldingUtils::BandedDiagonalMatrix()",
+          "nTrue (%d) > nNegBins (%d)", nTrue, nNegBins);
+
   ip=0;
-  for (int k=zerobin; k<=zerobin+nMeas; k++) {
+  for (int k=zerobin; k<=zerobin+nMeas; k++)
+  {
     // Set content of leftmost column (positive pT bins, TMatrixD true axis).
     firstCol[ip++] = hDpt->GetBinContent(k) / dptIntegral;
   }
   ip=0;
-  for (int k=zerobin; k<=zerobin+nTrue; k++) {
+  for (int k=zerobin; k<=zerobin+nTrue; k++)
+  {
     // Set content of first row (negative pT bins, TMatrixD meas axis).
     firstRow[ip] = hDpt->GetBinContent(zerobin-ip) / dptIntegral;
     ip++;
@@ -2531,34 +2702,37 @@ UnfoldingUtils::BandedDiagonalMatrix(TH1* hDpt,
 
   TMatrixD Abkg = Toeplitz(nMeas,nTrue,firstCol,firstRow);
   double x1=0, y1=0, x2=wdpt*nMeas, y2=wdpt*nTrue;
-  if (xm2 != xm1) {
+  if (xm2 != xm1)
+  {
     x1 = xm1;
     x2 = xm2;
   }
-  if (xt2 != xt1) {
+  if (xt2 != xt1)
+  {
     y1 = xt1;
     y2 = xt2;
   }
-  
-  TH2D* h = Matrix2Hist(Abkg, "banded_diag",x1,x2,y1,y2);
+
+  TH2D *h = Matrix2Hist(Abkg, "banded_diag",x1,x2,y1,y2);
   h->SetTitle("A_{bkg} from #deltap_{T};"
-	      "Reconstructed p_{T} (GeV/c);"
-	      "Generated p_{T} (GeV/c)");
+              "Reconstructed p_{T} (GeV/c);"
+              "Generated p_{T} (GeV/c)");
   return h;
 }
 
-TH2*
-UnfoldingUtils::TH2Product(TH2* hA, TH2* hB, TString name)
+TH2 *
+UnfoldingUtils::TH2Product(TH2 *hA, TH2 *hB, TString name)
 {
   // Return the matrix product hA*hB as a new TH2
   int nA = hA->GetNbinsY(), mB = hB->GetNbinsX();
 
-  if (nA != mB) {
-    Error("UnfoldingUtils::TH2Product()", 
-	  "Number of A cols (%d) != B rows (%d)", nA, mB);
+  if (nA != mB)
+  {
+    Error("UnfoldingUtils::TH2Product()",
+          "Number of A cols (%d) != B rows (%d)", nA, mB);
     return 0;
   }
-  
+
   double xa1 = hA->GetXaxis()->GetXmin(), xa2 = hA->GetXaxis()->GetXmax();
   double yb1 = hB->GetYaxis()->GetXmin(), yb2 = hB->GetYaxis()->GetXmax();
 
@@ -2575,16 +2749,18 @@ UnfoldingUtils::OuterProduct(TVectorD a, TVectorD b)
   int na = a.GetNrows();
   int nb = b.GetNrows();
   TMatrixD M(na,nb);
-  for (int i=0; i<na; i++) {
-    for (int j=0; j<nb; j++) {
+  for (int i=0; i<na; i++)
+  {
+    for (int j=0; j<nb; j++)
+    {
       M(i,j) = a(i)*b(j);
     }
   }
   return M;
 }
 
-TH2D*
-UnfoldingUtils::TH2Sub(TH2* h, int bx1, int bx2, int by1, int by2, TString name)
+TH2D *
+UnfoldingUtils::TH2Sub(TH2 *h, int bx1, int bx2, int by1, int by2, TString name)
 {
   // Return a sub-range of h (bx1..bx2) x (by1..by2), bx2,by2 included.
   double xw = h->GetXaxis()->GetBinWidth(1);
@@ -2593,22 +2769,26 @@ UnfoldingUtils::TH2Sub(TH2* h, int bx1, int bx2, int by1, int by2, TString name)
   double y1 = (by1-1)*yw, y2 = by2*yw;
   int nx = bx2-bx1+1, ny = by2-by1+1;
 
-  if (bx1<1 || bx2>h->GetNbinsX()) {
-    Error("UnfoldingUtils::TH2Sub()", 
-	  "Requested x bins %d,%d out of range (1,%d)", bx1,bx2,h->GetNbinsX());
+  if (bx1<1 || bx2>h->GetNbinsX())
+  {
+    Error("UnfoldingUtils::TH2Sub()",
+          "Requested x bins %d,%d out of range (1,%d)", bx1,bx2,h->GetNbinsX());
     return 0;
   }
-  if (by1<1 || by2>h->GetNbinsY()) {
-    Error("UnfoldingUtils::TH2Sub()", 
-	  "Requested y bins %d,%d out of range (1,%d)", by1,by2,h->GetNbinsY());
+  if (by1<1 || by2>h->GetNbinsY())
+  {
+    Error("UnfoldingUtils::TH2Sub()",
+          "Requested y bins %d,%d out of range (1,%d)", by1,by2,h->GetNbinsY());
     return 0;
   }
 
-  TH2D* hSub = new TH2D(name.Data(),name.Data(),nx,x1,x2,ny,y1,y2);
+  TH2D *hSub = new TH2D(name.Data(),name.Data(),nx,x1,x2,ny,y1,y2);
 
   int ipx=1, ipy=1;
-  for (int ix=bx1; ix<=bx2; ix++) {
-    for (int iy=by1; iy<=by2; iy++) {
+  for (int ix=bx1; ix<=bx2; ix++)
+  {
+    for (int iy=by1; iy<=by2; iy++)
+    {
       double val = h->GetBinContent(ix, iy);
       hSub->SetBinContent(ipx, ipy, val);
       ipy++;
@@ -2616,7 +2796,7 @@ UnfoldingUtils::TH2Sub(TH2* h, int bx1, int bx2, int by1, int by2, TString name)
     ipy=1;
     ipx++;
   }
-  
+
   return hSub;
 }
 
@@ -2633,270 +2813,297 @@ UnfoldingUtils::DerivativeMatrix(int n, int d)
   TVectorD c(d+1); // Use to populate L
   c.Zero();
 
-  // Assign c  
+  // Assign c
   if (d==0)
     c(0) = 1;
-  else {
+  else
+  {
     c(0) = -1;
     c(1) = 1;
   }
-  for (int i=2; i<=d; i++) {
-    TVectorD a(d+2), b(c);  
+  for (int i=2; i<=d; i++)
+  {
+    TVectorD a(d+2), b(c);
     a.SetSub(1, c);
     a.ResizeTo(d+1);
     b(d) = 0;
     c = a-b;
   }
 
-  for (int i=0; i<nd; i++) {
-    for (int j=0; j<d+1; j++) {
+  for (int i=0; i<nd; i++)
+  {
+    for (int j=0; j<d+1; j++)
+    {
       L(i,j+i) = c(j);
     }
   }
-  
+
   return L;
 }
 
-void 
-UnfoldingUtils::NormalizeXSum(TH2* hA, TH1* hN)
+void
+UnfoldingUtils::NormalizeXSum(TH2 *hA, TH1 *hN)
 {
   // Normalize x-rows of hA so each row sums to 1.0 (default), or
   // optionally to the value of the jth bin of hN.
-  
+
   int nx = hA->GetNbinsX();
   int ny = hA->GetNbinsY();
-  
+
   if (hN)
     if (ny != hN->GetNbinsX())
-      Error("NormalizeXSum()", 
-	    "ny=%d != %d in hN", nx, hN->GetNbinsX());
-  
+      Error("NormalizeXSum()",
+            "ny=%d != %d in hN", nx, hN->GetNbinsX());
+
   // xsum(j) contains sum of x cells in row j
   TVectorD xsum(ny);
-  for (int j=0; j<ny; j++) {
-    for (int i=0; i<nx; i++) {
+  for (int j=0; j<ny; j++)
+  {
+    for (int i=0; i<nx; i++)
+    {
       xsum(j) += hA->GetBinContent(i+1,j+1);
     }
   }
-  
+
   // Change bin contents of hA to normalized value, which is 1.0 if hN
   // is not passed in.
-  for (int j=0; j<ny; j++) {
-    double a = hN ? hN->GetBinContent(j+1) : 1.; 
+  for (int j=0; j<ny; j++)
+  {
+    double a = hN ? hN->GetBinContent(j+1) : 1.;
     double w = (xsum(j) != 0.) ? a/xsum(j) : a;
-    for (int i=0; i<nx; i++) {
+    for (int i=0; i<nx; i++)
+    {
       double val = w*hA->GetBinContent(i+1,j+1);
       hA->SetBinContent(i+1,j+1, val);
     }
   }
 }
 
-void 
-UnfoldingUtils::NormalizeRows(TMatrixD& A, TVectorD& normto)
+void
+UnfoldingUtils::NormalizeRows(TMatrixD &A, TVectorD &normto)
 {
   // Scale elements of row i so that they sum to to normto(i)
-  for (int i=0; i<A.GetNrows(); i++) {
+  for (int i=0; i<A.GetNrows(); i++)
+  {
     TVectorD row = TMatrixDRow(A,i);
     TMatrixDRow(A,i) *= normto(i)/row.Sum();
   }
 }
 
-TGraph*
-UnfoldingUtils::ResidualNorm(TObjArray* hists, double stepSize)
+TGraph *
+UnfoldingUtils::ResidualNorm(TObjArray *hists, double stepSize)
 {
   static int id=0; id++;
 
   // Check for Ax-b histos in hists
-  TObjArray* subList = new TObjArray();
-  for (int i=0; i<hists->GetEntries(); i++) {
-    TObject* obj = hists->At(i);
+  TObjArray *subList = new TObjArray();
+  for (int i=0; i<hists->GetEntries(); i++)
+  {
+    TObject *obj = hists->At(i);
     TString name = obj->GetName();
     TString cl   = obj->ClassName();
-    if (name.Contains("hr") && cl.Contains("TH1")) {
+    if (name.Contains("hr") && cl.Contains("TH1"))
+    {
       subList->Add(obj);
-      if (0) 
-	Info("UnfoldingUtils::ResidualNorm()", "Added %s",name.Data());
+      if (0)
+        Info("UnfoldingUtils::ResidualNorm()", "Added %s",name.Data());
     }
   }
   int np = subList->GetEntries();
-  TGraph* g = new TGraph(np);
-  for (int i=0; i<np; i++) {
-    TH1* h = (TH1*)subList->At(i);
+  TGraph *g = new TGraph(np);
+  for (int i=0; i<np; i++)
+  {
+    TH1 *h = (TH1 *)subList->At(i);
     TVectorD r = Hist2Vec(h);
-    g->SetPoint(i, stepSize*(i), TMath::Sqrt(r*r));    
+    g->SetPoint(i, stepSize*(i), TMath::Sqrt(r*r));
   }
-  
+
   if (g->GetN()==0)
     Warning("UnfoldingUtils::ResidualNorm()", "No points in graph. np=%d", np);
-  
+
   g->SetLineColor(kBlue-2);
   g->SetMarkerColor(kBlue-2);
   g->SetMarkerStyle(kFullCircle);
   g->SetMarkerSize(1.);
   g->SetLineWidth(2);
-  g->SetNameTitle(Form("rn_%d",id), 
-		  Form("Residual Norm;"
-		       "#lambda;"
-		       "Residual norm ||Ax^{(#lambda)}-b||_{2};"));
+  g->SetNameTitle(Form("rn_%d",id),
+                  Form("Residual Norm;"
+                       "#lambda;"
+                       "Residual norm ||Ax^{(#lambda)}-b||_{2};"));
   return g;
 }
 
-TH2D*
-UnfoldingUtils::UnfoldCovMatrix(int nTrials, 
-				int algo, 
-				double regPar,
-				TString opt,
-				TObjArray* bHists)
+TH2D *
+UnfoldingUtils::UnfoldCovMatrix(int nTrials,
+                                int algo,
+                                double regPar,
+                                TString opt,
+                                TObjArray *bHists)
 {
   // Propagate the measured data cov matrix to the unfolded result.
   static int id=0; id++;
-  
-  if (bHists && nTrials > bHists->GetEntries()) {
+
+  if (bHists && nTrials > bHists->GetEntries())
+  {
     Error("UnfoldingUtils::UnfoldCovMatrix()",
-	  "nTrials (%d) > number of trial data sets (%d)",
-	  nTrials, bHists->GetEntries());
+          "nTrials (%d) > number of trial data sets (%d)",
+          nTrials, bHists->GetEntries());
     return 0;
   }
-  
+
   // seed = 0 signals to use the TUUID identifier
   int seed = 0;
   TRandom3 rand(seed);
-  
+
   // Unfolded result
-  TH1D* hUnf = 0;
-  
-  // For iterative methods, regPar serves as the number of iterations. 
+  TH1D *hUnf = 0;
+
+  // For iterative methods, regPar serves as the number of iterations.
   // int nk = regPar;
-  
-  // Measurement covariance 
+
+  // Measurement covariance
   TMatrixD B(fMatB);
   if (opt.Contains("~"))
     B = LMatrix(fM, kUnitMatrix); // B~ is unit matrix
-  
+
   // TDecompChol decomp(fMatB);
   // TMatrixD UT(TMatrixD::kTransposed, decomp.GetU());
 
   // Returned covariance matrix
   TString title(Form("Covariance matrix for %s result",
-		     Algorithm(algo).Data()));
-  TH2D* hcov = new TH2D(Form("hcov%d",id),title.Data(),
-			fN,fTrueX1,fTrueX2,fN,fTrueX1,fTrueX2); 
+                     Algorithm(algo).Data()));
+  TH2D *hcov = new TH2D(Form("hcov%d",id),title.Data(),
+                        fN,fTrueX1,fTrueX2,fN,fTrueX1,fTrueX2);
 
   // Gaussian perturbation
   TVectorD g(fM);
 
   // Measured data + MC perturbation for one pseudo-experiment
-  TH1D* hbTrial = (TH1D*)fHistMeas->Clone(Form("hbTrial%d",id));
+  TH1D *hbTrial = (TH1D *)fHistMeas->Clone(Form("hbTrial%d",id));
 
   // Mean result of unfolding MC trials E[x]
-  TH1D* hxMean = new TH1D(Form("hxMean%d",id),"mean",fN,fTrueX1,fTrueX2); 
-  
+  TH1D *hxMean = new TH1D(Form("hxMean%d",id),"mean",fN,fTrueX1,fTrueX2);
+
   // Loop 1: Compute E[x] as hxMean
-  for (int t=0; t<nTrials; t++) { 
- 
+  for (int t=0; t<nTrials; t++)
+  {
+
     cout << Form("UnfoldCovMatrix(): computing mean result %d\r",t) << flush;
 
-    if (bHists) {
-      fHistMeas = (TH1D*)bHists->At(t);
+    if (bHists)
+    {
+      fHistMeas = (TH1D *)bHists->At(t);
       fVecb = Hist2Vec(fHistMeas);
       fVecbErr = Hist2Vec(fHistMeas, "unc");
       fMatATilde = DivColsByVector(fMatA, fVecbErr);
       fVecbTilde = ElemDiv(fVecb, fVecbErr);
-      
+
       /////
     }
-    else {
-      for (int i=0; i<fM; i++) {
-	g(i) = rand.Gaus(0,1);
+    else
+    {
+      for (int i=0; i<fM; i++)
+      {
+        g(i) = rand.Gaus(0,1);
       }
-      
+
       g *= B;//UT;
-      for (int i=0; i<fM; i++) {
-	hbTrial->SetBinContent(i+1, fVecb(i) + g(i));
-	hbTrial->SetBinError(i+1, fHistMeas->GetBinError(i+1));
-	fVecb(i) = hbTrial->GetBinContent(i+1);
-	fVecbErr(i) = hbTrial->GetBinError(i+1);
+      for (int i=0; i<fM; i++)
+      {
+        hbTrial->SetBinContent(i+1, fVecb(i) + g(i));
+        hbTrial->SetBinError(i+1, fHistMeas->GetBinError(i+1));
+        fVecb(i) = hbTrial->GetBinContent(i+1);
+        fVecbErr(i) = hbTrial->GetBinError(i+1);
       }
     }
 
-    switch (algo) {
-    case kGSVDAlgo: 
+    switch (algo)
+    {
+    case kGSVDAlgo:
       hUnf = GSVDAnalysis(fMatL, regPar, 0, 0, opt)->xregHist;
       break;
-    case kSVDAlgo: 
-      hUnf = UnfoldSVD(regPar, 0, opt, 0, 0, 0); 
+    case kSVDAlgo:
+      hUnf = UnfoldSVD(regPar, 0, opt, 0, 0, 0);
       break;
 
-      // case kRichLucyAlgo: 
-      //   hUnf = UnfoldRichardsonLucy(nk); 
+      // case kRichLucyAlgo:
+      //   hUnf = UnfoldRichardsonLucy(nk);
       //   break;
-      
-      // case kChi2MinAlgo: 
-      // 	h = UnfoldChi2Min(); 
-      // 	break;
+
+      // case kChi2MinAlgo:
+      //  h = UnfoldChi2Min();
+      //  break;
       // TODO: Implement hLbest or hGcv for PCGLS
-      // case kPCGLSAlgo: 
-      //   hUnf = UnfoldPCGLS(nk,fMatL,opt,0,0,hbTrial); 
-      //   break; 
+      // case kPCGLSAlgo:
+      //   hUnf = UnfoldPCGLS(nk,fMatL,opt,0,0,hbTrial);
+      //   break;
     }
-    
+
     for (int j=1; j<=fN; j++)
-      hxMean->AddBinContent(j,hUnf->GetBinContent(j)/nTrials); 
+      hxMean->AddBinContent(j,hUnf->GetBinContent(j)/nTrials);
   }
   cout << endl;
   rand.SetSeed(seed);
-  
+
   // Loop 2: Compute E[(x-E[x])*(x-E[x])'] as hcov
-  for (int t=0; t<nTrials; t++) {  
+  for (int t=0; t<nTrials; t++)
+  {
 
     cout << Form("UnfoldCovMatrix(): computing covariance %d\r",t) << flush;
 
-    if (bHists) {
-      fHistMeas = (TH1D*)bHists->At(t);
+    if (bHists)
+    {
+      fHistMeas = (TH1D *)bHists->At(t);
       fVecb = Hist2Vec(fHistMeas);
       fVecbErr = Hist2Vec(fHistMeas, "unc");
       fMatATilde = DivColsByVector(fMatA, fVecbErr);
       fVecbTilde = ElemDiv(fVecb, fVecbErr);
     }
-    else {
-      for (int i=0; i<fM; i++) {
-	g(i) = rand.Gaus(0,1);
+    else
+    {
+      for (int i=0; i<fM; i++)
+      {
+        g(i) = rand.Gaus(0,1);
       }
       g *= B;//UT;
-      for (int i=0; i<fM; i++) {
-	hbTrial->SetBinContent(i+1, fVecb(i) + g(i));
-	hbTrial->SetBinError(i+1, fHistMeas->GetBinError(i+1));
+      for (int i=0; i<fM; i++)
+      {
+        hbTrial->SetBinContent(i+1, fVecb(i) + g(i));
+        hbTrial->SetBinError(i+1, fHistMeas->GetBinError(i+1));
       }
     }
-    switch (algo) {
-    case kGSVDAlgo: 
+    switch (algo)
+    {
+    case kGSVDAlgo:
       hUnf = GSVDAnalysis(fMatL, regPar, 0, 0, opt)->xregHist;
       break;
-    case kSVDAlgo: 
-      hUnf = UnfoldSVD(regPar, 0, opt, 0, 0, 0); 
+    case kSVDAlgo:
+      hUnf = UnfoldSVD(regPar, 0, opt, 0, 0, 0);
       break;
     }
-    
+
     double dxj=0, dxk=0, cjk=0;
-    for (int j=1; j<=fN; j++) {
-      for (int k=1; k<=fN; k++) {
-	dxj = hUnf->GetBinContent(j) - hxMean->GetBinContent(j);
-	dxk = hUnf->GetBinContent(k) - hxMean->GetBinContent(k);
-	cjk = dxj*dxk/(nTrials-1);
-	cjk += hcov->GetBinContent(j,k);
-	hcov->SetBinContent(j,k,cjk);
+    for (int j=1; j<=fN; j++)
+    {
+      for (int k=1; k<=fN; k++)
+      {
+        dxj = hUnf->GetBinContent(j) - hxMean->GetBinContent(j);
+        dxk = hUnf->GetBinContent(k) - hxMean->GetBinContent(k);
+        cjk = dxj*dxk/(nTrials-1);
+        cjk += hcov->GetBinContent(j,k);
+        hcov->SetBinContent(j,k,cjk);
       }
     }
-    
+
   }
   cout << endl;
 
-  // Should ComputeRescaledSystem() be called here to reset back to original inputs?  
+  // Should ComputeRescaledSystem() be called here to reset back to original inputs?
   return hcov;
 }
 
-QRDecompResult 
-UnfoldingUtils::QRDecomp(TMatrixD& A)
+QRDecompResult
+UnfoldingUtils::QRDecomp(TMatrixD &A)
 {
   // Compute QR decomposition of A using Householder transformations
   QRDecompResult qr;
@@ -2907,10 +3114,11 @@ UnfoldingUtils::QRDecomp(TMatrixD& A)
   TMatrixD Qj(m,m);
 
   int nIter = TMath::Min(m-1, n);
-  for (int j=0; j<nIter; j++) {
+  for (int j=0; j<nIter; j++)
+  {
     TVectorD col = TMatrixDColumn(R,j);
     TVectorD x = col.GetSub(j,m-1);
- 
+
     int sign = (col(j)<0.)? -1. : 1.;
     double alpha = sign*TMath::Sqrt(x*x);
     TVectorD u(x);
@@ -2918,28 +3126,31 @@ UnfoldingUtils::QRDecomp(TMatrixD& A)
 
     // Compute Householder vector v and matrix H
     double unorm = TMath::Sqrt(u*u);
-    TVectorD v(u); v *= (unorm==0)? 0. : 1./unorm;  
+    TVectorD v(u); v *= (unorm==0)? 0. : 1./unorm;
     TMatrixD H = OuterProduct(v,v);
     H *= 2;
     TMatrixD I(H); I.UnitMatrix();
     H = I - H;
-    
+
     // Full-dimension Householder matrix
     Qj.UnitMatrix();
     Qj.SetSub(j,j,H);
 
-    // Update Q and R    
-    Q = Q*Qj;    
+    // Update Q and R
+    Q = Q*Qj;
     R = Qj*R;
   }
 
   bool requirePositivePivotEntries = true;
-  if (requirePositivePivotEntries) {
+  if (requirePositivePivotEntries)
+  {
     int r = TMath::Min(m,n);
-    for (int i=0; i<r; i++) {
-      if(R(i,i)<0) {
-	TMatrixDRow(R,i) *= -1;
-	TMatrixDColumn(Q,i) *= -1;
+    for (int i=0; i<r; i++)
+    {
+      if (R(i,i)<0)
+      {
+        TMatrixDRow(R,i) *= -1;
+        TMatrixDColumn(Q,i) *= -1;
       }
     }
   }
@@ -2949,12 +3160,12 @@ UnfoldingUtils::QRDecomp(TMatrixD& A)
   qr.R.ResizeTo(R);
   qr.Q = Q;
   qr.R = R;
-  
+
   return qr;
 }
 
-QRDecompResult 
-UnfoldingUtils::QLDecomp(TMatrixD& A)
+QRDecompResult
+UnfoldingUtils::QLDecomp(TMatrixD &A)
 {
   // Compute QL decomposition of A using Householder transformations
   QRDecompResult ql;
@@ -2971,7 +3182,8 @@ UnfoldingUtils::QLDecomp(TMatrixD& A)
   L1.UnitMatrix();
 
   int nIter = TMath::Min(m-1, n);
-  for (int j=0; j<nIter; j++) {
+  for (int j=0; j<nIter; j++)
+  {
     TVectorD col = TMatrixDColumn(L,n-j-1);
     TVectorD x = col.GetSub(0,nIter-j);
 
@@ -2982,7 +3194,7 @@ UnfoldingUtils::QLDecomp(TMatrixD& A)
 
     // Compute Householder vector v and matrix H
     double unorm = TMath::Sqrt(u*u);
-    TVectorD v(u); v *= (unorm==0)? 0. : 1./unorm;  
+    TVectorD v(u); v *= (unorm==0)? 0. : 1./unorm;
     TMatrixD H = OuterProduct(v,v);
     H *= 2;
     TMatrixD I(H); I.UnitMatrix();
@@ -2991,46 +3203,49 @@ UnfoldingUtils::QLDecomp(TMatrixD& A)
     // Full-dimension Householder matrix
     Qj.UnitMatrix();
     Qj.SetSub(0,0,H);
-    
+
     // Update Q and L
-    Q = Q*Qj;    
+    Q = Q*Qj;
     L = Qj*L;
   }
 
   // cout<<"Q before"; Q.Print();
   // cout<<"L before"; L.Print();
-  
+
   bool requirePositivePivotEntries = true;
-  if (requirePositivePivotEntries) {
+  if (requirePositivePivotEntries)
+  {
     int r = TMath::Min(m,n);
     int d = m-n;
-    for (int i=0; i<r; i++) {
+    for (int i=0; i<r; i++)
+    {
       int row=i,col=i;
       if (m<n)
-	col -= d;
+        col -= d;
       else if (m>n)
-	row += 1;
-      
+        row += 1;
+
       //      Printf("i= %d, L(%d,%d) = %g", i, row, col, L(row,col));
-      if(L(row,col)<0) {
-	TMatrixDRow(L,row) *= -1;
-	TMatrixDColumn(Q,row) *= -1;
+      if (L(row,col)<0)
+      {
+        TMatrixDRow(L,row) *= -1;
+        TMatrixDColumn(Q,row) *= -1;
       }
     }
   }
-  
+
   // Store results
   ql.Q.ResizeTo(Q);
   ql.R.ResizeTo(L);
   ql.Q = Q;
   ql.R = L;
-  
+
   return ql;
 }
 
 
-CSDecompResult 
-UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
+CSDecompResult
+UnfoldingUtils::CSDecomp(TMatrixD &Q1, TMatrixD &Q2)
 {
   // ***************************************
   // Q1 shorter or equal to Q2 (m <= p case)
@@ -3042,9 +3257,10 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
   l  = Q1.GetNcols();
   r  = 0;
 
-  if (m > p) {
+  if (m > p)
+  {
     Error("UnfoldingUtils::CSDecomp()",
-	  "Q1 rows (%d) <= Q2 (%d) rows required.\nExiting.",m,p);
+          "Q1 rows (%d) <= Q2 (%d) rows required.\nExiting.",m,p);
     gSystem->Exit(-1);
   }
 
@@ -3070,18 +3286,20 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
   ReverseVector(beta);
 
   // 6.
-  for (int i=0; i<l-q2; i++) {
+  for (int i=0; i<l-q2; i++)
+  {
     alpha(i) = 1.0;
-    beta(i)  = 0.0; 
+    beta(i)  = 0.0;
   }
 
-  if (debug) {  
+  if (debug)
+  {
     cout << "V: ";  V.Print();
     //    cout << "S: ";  S.Print();
     cout << "Z: ";  Z.Print();
     cout << "beta:"; beta.Print(); // non-decreasing
   }
-  
+
   // 7.
   // Find r where beta(r) <= 1/sqrt(2) < beta(r+1).  C++ problem:
   // index != dimension! Need two variables, r and rdim, to resolve
@@ -3090,21 +3308,25 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
   double thr = 1./TMath::Sqrt(2.);
   int rdim = 0;
   r = -1;
-  for (int i=0; i<m-1; i++) {
-    if (beta(i) <= thr && beta(i+1) > thr) {
+  for (int i=0; i<m-1; i++)
+  {
+    if (beta(i) <= thr && beta(i+1) > thr)
+    {
       r = i;
       break;
     }
   }
-  if (r == -1) {
+  if (r == -1)
+  {
     r = 0;
   }
   else rdim = r+1;
 
-  if (debug) {  
+  if (debug)
+  {
     Printf("r = %d, rdim = %d.",r,rdim);
   }
-  
+
   // 8.
   TMatrixD T = Q1*Z; // (m x l)
 
@@ -3113,8 +3335,9 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
   QRDecompResult qrT = QRDecomp(T);
   TMatrixD U = qrT.Q;
   TMatrixD R = qrT.R;
-  
-  if (debug) {  
+
+  if (debug)
+  {
     cout << "T: ";  T.Print();
     cout << "U and R: ";
     U.Print();
@@ -3129,11 +3352,12 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
   if (r3r < r3c)
     R3.ResizeTo(r3c, r3c);
 
-  if (debug) {  
+  if (debug)
+  {
     cout << "R2: ";  R2.Print();
     cout << "R3: ";  R3.Print();
   }
-  
+
   // 10.
   // Compute SVD of R3: R3 = Ur*Cr*Zr'
   TDecompSVD svd2(R3);
@@ -3145,24 +3369,28 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
     alpha(rdim+i) = a3(i);
 
   // 11.
-  for (int i=q1; i<l; i++) {
+  for (int i=q1; i<l; i++)
+  {
     alpha(i) = 0.0;
     beta(i)  = 1.0;
   }
 
   // 12.
-  for (int i=l-q2; i<rdim; i++) {
+  for (int i=l-q2; i<rdim; i++)
+  {
     alpha(i) = R2(i,i);
   }
 
-  if (debug) {  
+  if (debug)
+  {
     cout << "alpha: ";  alpha.Print();
   }
-  
+
   // 13.
   // Form final U matrix
   // First resize U to undo TDecompSVD-required modification
-  if (r3r < r3c) {
+  if (r3r < r3c)
+  {
     Ur.ResizeTo(r3r,r3r);
   }
 
@@ -3170,7 +3398,8 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
   Ur1.UnitMatrix();
   Ur1.SetSub(rdim,rdim,Ur);
 
-  if (debug) {
+  if (debug)
+  {
     cout << "Ur: ";  Ur.Print();
     cout << "Ur1: ";  Ur1.Print();
   }
@@ -3181,13 +3410,14 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
   Zrt.ResizeTo(q2-rdim,q2-rdim);
 
   TMatrixD Zr1(Z);
-  Zr1.UnitMatrix();  
+  Zr1.UnitMatrix();
   Zr1.SetSub(rdim,rdim,Zr);
 
-  if (debug) {
+  if (debug)
+  {
     cout << "Zr1: ";  Zr1.Print();
   }
-  
+
   U = U*Ur1;
   Z = Z*Zr1;
 
@@ -3198,7 +3428,7 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
     St(i,i) = beta(i+rdim);
 
   TMatrixD W = St*Zrt;
-  
+
   // 16.
   QRDecompResult qrw = QRDecomp(W);
   TMatrixD Qw = qrw.Q;
@@ -3209,7 +3439,7 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
   Vpost.UnitMatrix();
   Vpost.SetSub(rdim-n, rdim-n, Qw);
   V = V*Vpost;
-  
+
   // Construct C from alpha
   for (int i=0; i<q1; i++)
     C(i,i) = alpha(i);
@@ -3218,7 +3448,8 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
   for (int i=0; i<q2; i++)
     S(i,i) = beta(i);
 
-  if (debug) {
+  if (debug)
+  {
     cout << "St: ";  St.Print();
     cout << "Zrt: ";  Zrt.Print();
     cout << "W: ";  W.Print();
@@ -3241,7 +3472,7 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
     TMatrixD zz = Q2 - Vtest*G;
     cout << "zz: ";  zz.Print();
   }
-  
+
   csd.C.ResizeTo(C);
   csd.S.ResizeTo(S);
   csd.U.ResizeTo(U);
@@ -3263,8 +3494,8 @@ UnfoldingUtils::CSDecomp(TMatrixD& Q1, TMatrixD& Q2)
   return csd;
 }
 
-CSDecompResult 
-UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
+CSDecompResult
+UnfoldingUtils::CSDecompQ1Taller(TMatrixD &Q1, TMatrixD &Q2)
 {
   // ***************************************
   // m > p case
@@ -3290,33 +3521,36 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   // SVD of Q1: UCZ'
   if (fVerbosity)
     Info("UnfoldingUtils::CSDecompQ1Taller()",
-	 "Computing SVD of Q1 (%d x %d)",m,l);
+         "Computing SVD of Q1 (%d x %d)",m,l);
   TDecompSVD svdQ1(Q1);
   TMatrixD U     = svdQ1.GetU();    // m x m
   TMatrixD Z     = svdQ1.GetV();    // l x l
   alpha          = svdQ1.GetSig();  // l
 
   // 3.
-  for (int i = 0; i<l; i++) {
-    beta(i)  = 1.; 
+  for (int i = 0; i<l; i++)
+  {
+    beta(i)  = 1.;
     if (i>=q1) alpha(i) = 0.;
   }
-  
+
   if (fVerbosity)
     Info("UnfoldingUtils::CSDecompQ1Taller()",
-	 "m=%d, p=%d, l=%d, q1=%d, q2=%d",  m,p,l,q1,q2);
-  if (debug) {
+         "m=%d, p=%d, l=%d, q1=%d, q2=%d",  m,p,l,q1,q2);
+  if (debug)
+  {
     Printf("\nSVD: Q1 = U*diag(alpha)*Z\'");
     cout << "U: ";  U.Print();
     cout << "alpha: ";  alpha.Print();
     cout << "Z: ";  Z.Print();
   }
-  
+
   // 4.
   // Find r where alpha(r) >= 1/sqrt(2) > alpha(r+1)
-  // r is the index, rdim is the # of values. 
+  // r is the index, rdim is the # of values.
   double thr = 1./TMath::Sqrt(2.);
-  for (int i=0; i<l-1; i++) {
+  for (int i=0; i<l-1; i++)
+  {
     // if (alpha(i) >= thr && alpha(i+1) < thr) {
     //   r = i;
     if (alpha(i) >= thr)
@@ -3324,13 +3558,14 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
     if (alpha(i+1) < thr)
       break;
   }
-  if (r == -1) {
+  if (r == -1)
+  {
     r = 0;
   }
   else rdim = r+1;
-  
-  if (debug) 
-    Printf ("r = %d, rdim = %d",r,rdim);
+
+  if (debug)
+    Printf("r = %d, rdim = %d",r,rdim);
 
   // 5.
   TMatrixD T = Q2*Z;
@@ -3342,7 +3577,8 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   TMatrixD V = vl.Q;
   TMatrixD L = vl.R;
 
-  if (debug) {
+  if (debug)
+  {
     cout << "T = Q2*Z = V*L: ";  T.Print();
     cout << "V: ";  V.Print();
     cout << "L (before permutation): ";  L.Print();
@@ -3350,12 +3586,13 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
     Tcheck -= V*L;
     Printf("T - V*L sum: %g",Tcheck.Sum());
   }
-  
+
   // Create permutation matrix Pi; L = Pi*L.
   TMatrixD Pi(p,p);
   TMatrixD Iq2(q2,q2); Iq2.UnitMatrix();
   Pi.SetSub(0,p-q2,Iq2);
-  if (p>q2) {
+  if (p>q2)
+  {
     int d = p-q2;
     TMatrixD Id(d,d); Id.UnitMatrix();
     Pi.SetSub(p-1,0,Id);
@@ -3365,7 +3602,8 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   // And its inverse (for later)
   TMatrixD PiInv(TMatrixD::kInverted, Pi);
 
-  if (debug) {
+  if (debug)
+  {
     cout << "Pi: ";  Pi.Print();
     cout << "PiInv: ";  PiInv.Print();
     cout << "Pi*L: ";  L.Print();
@@ -3380,57 +3618,60 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
     l1r = L.GetNrows()-1;
   if (l1c > L.GetNcols()-1)
     l1c = L.GetNcols()-1;
-  
+
   if (debug)
     Printf("Getting L1 (%d x %d) from L (%d x %d)", l1r,l1c,L.GetNrows(),L.GetNcols());
 
   TMatrixD L1 = L.GetSub(p-q2, l1r, p-q2, l1c);
 
   // Get L_23 := L2
-  int row1 = p-q2+r; 
-  if (row1 > L.GetNrows()-1) 
+  int row1 = p-q2+r;
+  if (row1 > L.GetNrows()-1)
     row1 = L.GetNrows()-1;
   if (row1 < 0) row1 = 0;
   int col1 = l-q2+r;
-  if (col1 > L.GetNcols()-1) 
+  if (col1 > L.GetNcols()-1)
     col1 = L.GetNcols()-1;
   if (col1 < 0) col1 = 0;
-  
-  if (L1.GetNrows() < L1.GetNcols()) { // So TDecompSVD works
+
+  if (L1.GetNrows() < L1.GetNcols())   // So TDecompSVD works
+  {
     if (debug)
       Printf("Resizing L1 (%d x %d) --> (%d x %d)",
-	     L1.GetNrows(), L1.GetNcols(), L1.GetNcols(), L1.GetNcols());
+             L1.GetNrows(), L1.GetNcols(), L1.GetNcols(), L1.GetNcols());
     L1.ResizeTo(L1.GetNcols(), L1.GetNcols());
   }
-  
-  if (debug) {
+
+  if (debug)
+  {
     cout << "L1 = [L_11 L_12] = Vl*Sl*Zl\': ";  L1.Print();
     Printf("Getting L2... row %d to %d, col %d to %d",
-	   row1, L.GetNrows()-1, col1, L.GetNcols()-1);
+           row1, L.GetNrows()-1, col1, L.GetNcols()-1);
   }
-  
+
   TMatrixD L2 = L.GetSub(row1, L.GetNrows()-1, col1, L.GetNcols()-1);
-  
-  if (debug) {
+
+  if (debug)
+  {
     cout << "L2: ";  L2.Print();
   }
-  
+
   // 7.
   if (fVerbosity)
     Info("UnfoldingUtils::CSDecompQ1Taller()",
-	 "Computing SVD of L1 (%d x %d)",L1.GetNrows(),L1.GetNcols());
+         "Computing SVD of L1 (%d x %d)",L1.GetNrows(),L1.GetNcols());
   TDecompSVD svdl(L1);
   TMatrixD Vlbig = svdl.GetU();
-  
+
   int rmax = TMath::Min(r-1, V.GetNrows()-1);
 
   if (debug)
     Printf("Getting Vl from Vlbig (%d x %d)... row 0 to %d, col 0 to %d",
-	   Vlbig.GetNrows(), Vlbig.GetNcols(), rmax,rmax);
+           Vlbig.GetNrows(), Vlbig.GetNcols(), rmax,rmax);
 
   TMatrixD Vl = Vlbig.GetSub(0,rmax,0,rmax);
   TVectorD bl = svdl.GetSig();
-  TMatrixD Zl = svdl.GetV(); 
+  TMatrixD Zl = svdl.GetV();
 
   // 8-10.
   ReverseVector(bl);
@@ -3439,16 +3680,18 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
 
   // 11.
   int imax = TMath::Min(l, bl.GetNrows());
-  for (int i=0; i<imax; i++) 
+  for (int i=0; i<imax; i++)
     beta(i) = bl(i);
   int nl2 = L2.GetNrows();
-  for (int i=0; i<nl2; i++) {
+  for (int i=0; i<nl2; i++)
+  {
     if (bl.GetNrows()+i < l)
       beta(bl.GetNrows()+i) = L2(i,i);
   }
-  for (int i=0; i<l-q2; i++) {
+  for (int i=0; i<l-q2; i++)
+  {
     alpha(i) = 1.;
-    beta(i)  = 0.; 
+    beta(i)  = 0.;
   }
 
   // 12. Create V~ to post-multiply V
@@ -3459,12 +3702,13 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
   // 13.
   if (debug)
     Printf("V = V (%d x %d) * Vpost( %d x %d) * PiInv(%d x %d)",
-	   V.GetNrows(), V.GetNcols(), 
-	   Vpost.GetNrows(), Vpost.GetNcols(), 
-	   PiInv.GetNrows(), PiInv.GetNcols());
+           V.GetNrows(), V.GetNcols(),
+           Vpost.GetNrows(), Vpost.GetNcols(),
+           PiInv.GetNrows(), PiInv.GetNcols());
   V = V*Vpost*PiInv;
-  
-  if (debug) {
+
+  if (debug)
+  {
     cout << "bl (after reversing):";  bl.Print();
     cout << "beta:";  beta.Print();
     cout << "Vl: ";  Vl.Print();
@@ -3473,63 +3717,70 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
     cout << "Zl: ";  Zl.Print();
     cout << "Z: ";  Z.Print();
   }
-  
+
   // 14.
   TMatrixD Zpost(Z);
   Zpost.UnitMatrix();
   Zpost.SetSub(0,0,Zl);
   Z = Z*Zpost;
 
-  if (debug) {
+  if (debug)
+  {
     cout << "Z (final): "; Z.Print();
   }
 
   // 15. W = S~ * Zl
   TMatrixD W(Zl);
   W.Zero();
-  for (int i=0; i<Zl.GetNcols(); i++) 
+  for (int i=0; i<Zl.GetNcols(); i++)
     W(i,i) = alpha(i);
-  
-  if (debug) {
+
+  if (debug)
+  {
     cout << "S~: ";  W.Print();
   }
 
   W = W*Zl;
-  if (debug) {
+  if (debug)
+  {
     cout << "W: ";  W.Print();
   }
-  
+
   if (fVerbosity)
     Info("UnfoldingUtils::CSDecompQ1Taller()",
-	 "Computing QRDecomp(W) (%d x %d)",W.GetNrows(),W.GetNcols());
+         "Computing QRDecomp(W) (%d x %d)",W.GetNrows(),W.GetNcols());
   QRDecompResult qrw = QRDecomp(W);
   TMatrixD Qw = qrw.Q;
-  int ndiff =  U.GetNcols() - Qw.GetNrows(); 
-  if (ndiff > 0) {
+  int ndiff =  U.GetNcols() - Qw.GetNrows();
+  if (ndiff > 0)
+  {
     int nr = Qw.GetNrows();
     Qw.ResizeTo(nr+ndiff, Qw.GetNcols()+ndiff);
     for (int j=0; j<ndiff; j++)
       Qw(nr+j, nr+j) = 1.;
   }
-  if (debug) {
+  if (debug)
+  {
     cout << "Qw: ";  Qw.Print();
   }
-  
+
   U = U*Qw;
 
-  if (debug) {
+  if (debug)
+  {
     cout << "U: ";  U.Print();
   }
-  
+
   // Finally, assign C and S matrices
   if (fVerbosity)
     Info("UnfoldingUtils::CSDecompQ1Taller()","Formatting output...");
-  for (int j=0; j<q1; j++) 
+  for (int j=0; j<q1; j++)
     C(j,j) = alpha(j);
-  for (int i=0; i<q2; i++) 
+  for (int i=0; i<q2; i++)
     S(i,l-p+i) = beta(l-p+i);
 
-  if (debug) {
+  if (debug)
+  {
     cout << "alpha: ";  alpha.Print();
     cout << "beta: ";   beta.Print();
     cout << "C: ";  C.Print();
@@ -3564,8 +3815,8 @@ UnfoldingUtils::CSDecompQ1Taller(TMatrixD& Q1, TMatrixD& Q2)
 }
 
 
-GSVDecompResult 
-UnfoldingUtils::GSVD(TMatrixD& A, TMatrixD& B)
+GSVDecompResult
+UnfoldingUtils::GSVD(TMatrixD &A, TMatrixD &B)
 {
   bool debug = false;
   GSVDecompResult g;
@@ -3584,9 +3835,9 @@ UnfoldingUtils::GSVD(TMatrixD& A, TMatrixD& B)
   M.SetSub(0, 0, A);
   M.SetSub(m, 0, B);
 
-  if (M.GetNoElements() > 100000) 
-    Printf("UnfoldingUtils::GSVD(): " 
-	   "Computing initial SVD on M (%d x %d)...", m+p, n);
+  if (M.GetNoElements() > 100000)
+    Printf("UnfoldingUtils::GSVD(): "
+           "Computing initial SVD on M (%d x %d)...", m+p, n);
   TDecompSVD svdM(M);
   TMatrixD Q  = svdM.GetU(); // m+p x m+p
   TMatrixD Z  = svdM.GetV(); //   n x n
@@ -3596,22 +3847,22 @@ UnfoldingUtils::GSVD(TMatrixD& A, TMatrixD& B)
   //r = Rank(M);
 
   if (debug)
-    Printf("Rank(M): %d. M = QSZ\', Q (%d x %d) Z (%d x %d)", 
-	   r, Q.GetNrows(), Q.GetNcols(), Z.GetNrows(), Z.GetNcols());
+    Printf("Rank(M): %d. M = QSZ\', Q (%d x %d) Z (%d x %d)",
+           r, Q.GetNrows(), Q.GetNcols(), Z.GetNrows(), Z.GetNcols());
 
   TMatrixD Sr(r,r); // Sigma_r submatrix from Sigma
-  for (int i=0; i<r; i++) 
+  for (int i=0; i<r; i++)
     Sr(i,i) = sv(i);
 
   // 2. Partition Q to match dimensions of A and B.
   TMatrixD Q1 = Q.GetSub(0,m-1,0,n-1);
-  TMatrixD Q2 = Q.GetSub(m, m+p-1, 0, n-1);  
+  TMatrixD Q2 = Q.GetSub(m, m+p-1, 0, n-1);
   bool q1Taller = Q1.GetNrows() > Q2.GetNrows();
 
   // 3. Do CS decomposition
-  CSDecompResult csd = 
+  CSDecompResult csd =
     (q1Taller)? CSDecompQ1Taller(Q1, Q2) : CSDecomp(Q1, Q2);
-  
+
   // 4. Assign output struct members
   g.U.ResizeTo(m,n); //csd.U);
   g.V.ResizeTo(csd.V);
@@ -3628,11 +3879,12 @@ UnfoldingUtils::GSVD(TMatrixD& A, TMatrixD& B)
   g.alpha = csd.alpha;
   g.beta = csd.beta;
   g.gamma = ElemDiv(g.alpha, g.beta, 9999e12);
-  
+
   // Create X' from V'Sigma (upper left) and W (lower right)
   TMatrixD XT(n,n);
   XT.SetSub(0,0,TMatrixD(csd.Z,TMatrixD::kTransposeMult,Sr));
-  for (int i=r; i<n; i++) {
+  for (int i=r; i<n; i++)
+  {
     XT(i,i) = Sr(r-1,r-1);
   }
   XT = TMatrixD(XT, TMatrixD::kMultTranspose, Z);
@@ -3640,66 +3892,71 @@ UnfoldingUtils::GSVD(TMatrixD& A, TMatrixD& B)
   g.XT.ResizeTo(XT);
   g.XT = XT;
 
-  return g;  
+  return g;
 }
 
 
-void 
-UnfoldingUtils::ReverseColumns(TMatrixD& A, int col1, int col2)
+void
+UnfoldingUtils::ReverseColumns(TMatrixD &A, int col1, int col2)
 {
   // Reverse the column sequence col1...col2, col1 and col2 included.
   TMatrixD B(A);
   int n = B.GetNcols();
   int ncols = col2-col1+1;
-  if (ncols > n) {
+  if (ncols > n)
+  {
     Error("ReverseColumns()",
-	  "Requested column range (%d-%d) > out of bounds (0-%d).",
-	  col1,col2,A.GetNcols());
+          "Requested column range (%d-%d) > out of bounds (0-%d).",
+          col1,col2,A.GetNcols());
     return;
   }
 
-  for (int j=col1; j<=col2; j++) { // j is col index of B
+  for (int j=col1; j<=col2; j++)   // j is col index of B
+  {
     TMatrixDColumn(B, j) = TMatrixDColumn(A, ncols-j-1);
   }
   A = B;
 }
 
-void 
-UnfoldingUtils::ReverseColumns(TMatrixD& A)
+void
+UnfoldingUtils::ReverseColumns(TMatrixD &A)
 {
   TMatrixD B(A);
   int n = B.GetNcols();
 
-  for (int j=0; j<n; j++) {
+  for (int j=0; j<n; j++)
+  {
     TMatrixDColumn(B, j) = TMatrixDColumn(A, n-j-1);
   }
   A = B;
 }
 
-void 
-UnfoldingUtils::ReverseRows(TMatrixD& A)
+void
+UnfoldingUtils::ReverseRows(TMatrixD &A)
 {
   TMatrixD B(A);
   int m = B.GetNrows();
 
-  for (int i=0; i<m; i++) {
+  for (int i=0; i<m; i++)
+  {
     TMatrixDColumn(B, i) = TMatrixDColumn(A, m-i-1);
   }
   A = B;
 }
 
-void 
-UnfoldingUtils::ReverseVector(TVectorD& v)
+void
+UnfoldingUtils::ReverseVector(TVectorD &v)
 {
   TVectorD vtmp(v);
   int m = v.GetNrows();
-  for (int i=0; i<m; i++) {
+  for (int i=0; i<m; i++)
+  {
     vtmp(i) = v(m-i-1);
   }
   v = vtmp;
 }
 
-void 
+void
 UnfoldingUtils::SwapColumns(TMatrixD &A, int col1, int col2)
 {
   int nc = A.GetNcols();
@@ -3707,25 +3964,25 @@ UnfoldingUtils::SwapColumns(TMatrixD &A, int col1, int col2)
     Error("SwapColumns", "col1 or col2 index out of bounds");
 
   TMatrixD B(A);
-  
+
   TMatrixDColumn(B, col1) = TMatrixDColumn(A, col2);
   TMatrixDColumn(B, col2) = TMatrixDColumn(A, col1);
 
   A = B;
 }
 
-void 
-UnfoldingUtils::SwapElements(TVectorD& v, int j1, int j2)
+void
+UnfoldingUtils::SwapElements(TVectorD &v, int j1, int j2)
 {
   int nr = v.GetNrows();
   if (j1 >= nr || j2 >= nr)
     Error("SwapElements", "an index is out of bounds");
-  
+
   TVectorD v2(v);
-  
+
   v2(j1) = v(j2);
   v2(j2) = v(j1);
-  
+
   v = v2;
 }
 
