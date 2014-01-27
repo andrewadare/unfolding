@@ -133,9 +133,9 @@ void BayesUnfoldingExample641()
   unf1->SetLineWidth(2);
   for (int t=0; t<Nt; t++)
   {
-    BayesianCredibilityInterval bci = GetBCI(hMCMC[t], 0.68);
-    unf1->SetPoint(t, hD->GetBinCenter(t+1), bci.u);
-    unf1->SetPointError(t, 0.48*hD->GetBinWidth(t+1), bci.du);
+    MaxDensityInterval mdi = GetMDI(hMCMC[t], 0.68);
+    unf1->SetPoint(t, hD->GetBinCenter(t+1), mdi.u);
+    unf1->SetPointError(t, 0.48*hD->GetBinWidth(t+1), mdi.du);
   }
 
   // Unfolded spectrum from uniform sampling after volume reduction
@@ -148,9 +148,9 @@ void BayesUnfoldingExample641()
 
     for (int t=0; t<Nt; t++)
     {
-      BayesianCredibilityInterval bci = GetBCI(hFlat[t], 0.68);
-      unf2->SetPoint(t, hD->GetBinCenter(t+1), bci.u);
-      unf2->SetPointError(t, 0.47*hD->GetBinWidth(t+1), bci.du);
+      MaxDensityInterval mdi = GetMDI(hFlat[t], 0.68);
+      unf2->SetPoint(t, hD->GetBinCenter(t+1), mdi.u);
+      unf2->SetPointError(t, 0.47*hD->GetBinWidth(t+1), mdi.du);
     }
   }
 
@@ -208,10 +208,10 @@ TGraphAsymmErrors *ReducedSamplingVolume(TH1D **hmp, TGraphAsymmErrors *old)
     if (!hmp[t])
       Error("","!hmp[%d]",t);
 
-    BayesianCredibilityInterval bci = GetBCI(hmp[t], 0.99);
-    g->SetPoint(t, g->GetX()[t], bci.u);
-    g->SetPointEYlow(t, bci.du);
-    g->SetPointEYhigh(t, bci.du);
+    MaxDensityInterval mdi = GetMDI(hmp[t], 0.99);
+    g->SetPoint(t, g->GetX()[t], mdi.u);
+    g->SetPointEYlow(t, mdi.du);
+    g->SetPointEYhigh(t, mdi.du);
   }
   return g;
 }
