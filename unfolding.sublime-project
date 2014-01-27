@@ -1,0 +1,26 @@
+{
+  "folders":
+  [
+  {
+   "follow_symlinks": true,
+   "path": ".",
+   "file_exclude_patterns":
+   [
+   "*.d",
+   "*.so",
+   "*.bak",
+   "*.root",
+   "*.pdf",
+   "UtilFns.C",
+   "MatrixUtils.C"
+   ],
+
+   "folder_exclude_patterns": 
+   [
+   "rootfiles",
+   "pdfs",
+   "proto"
+   ]
+ }
+ ]
+}
