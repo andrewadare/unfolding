@@ -1,6 +1,48 @@
+# Build/dict files
+##################
 *.d
 *.so
+
+# Backup/tmp/sandbox directories
+##################
+bak
+proto
+
+# ROOT files
+############
 *.root
+
+# Compressed files
+##################
+*.tgz
+*.gz
+*.zip
+
+# Image files
+#############
 *.pdf
+*.png
+*.jpg
 *.gif
+
+# OS generated files
+####################
+.DS_Store
+.Trashes
+Thumbs.db
+
+# Text editor files
+###################
+*~
+*.sublime-workspace
+
+# Symbolic links
+################
+MatrixUtils.C
 UtilFns.C
+StyleDefs.C
+
+# TeX output (assumed auto-generated)
+#####################################
+*.tex
+tex
