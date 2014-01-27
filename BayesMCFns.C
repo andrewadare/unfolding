@@ -50,7 +50,7 @@ TTree *
 SampleUniform(int nSamples, TVectorD &D, TMatrixD &Prt,
               TGraphAsymmErrors *box);
 TTree *
-SampleMH(int nSamples, int nBurnIn, TMatrixD &Prt, TGraphAsymmErrors *box, 
+SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
          LogLikeFn &llfunc, LogPrior &priorfunc);
 void AssignProposal(const TGraphAsymmErrors *box, const TVectorD &currentvec,
                     TVectorD &newvec);
@@ -133,16 +133,15 @@ SampleUniform(int nSamples, TVectorD &D, TMatrixD &Prt, TGraphAsymmErrors *box)
 }
 
 TTree *
-SampleMH(int nSamples, int nBurnIn, TMatrixD &Prt, TGraphAsymmErrors *box, 
+SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
          LogLikeFn &llfunc, LogPrior &priorfunc)
 {
   // D = measured data, Prt = migration matrix, box = Nt-dim sampling volume.
   // Alpha and Tmc are used to construct the prior for regularization.
   int Nt = box->GetN();
-  double p0, p1;      // Current and proposed probabilities
+  double p0, p1;      // Current and proposed (log) probabilities
   float Tpoint[Nt], logL;
   TVectorD trialT = MatrixUtils::Graph2Vec(box);
-  TVectorD trialR = Prt*trialT;
   TVectorD propT(Nt);
 
   TTree *ptree = new TTree("tmcmc", "Metropolis-Hastings Markov chain");
@@ -153,7 +152,7 @@ SampleMH(int nSamples, int nBurnIn, TMatrixD &Prt, TGraphAsymmErrors *box,
   ptree->Branch("logL", &logL, "logL/F");
 
   // Note that llfunc < 0, priorfunc > 0.
-  p0 = llfunc(trialR) - priorfunc(trialT);
+  p0 = llfunc(trialT) - priorfunc(trialT);
 
   std::cout << Form("Sampling L(D|T)*pi(T) using MCMC...")
             << std::endl;
@@ -162,12 +161,14 @@ SampleMH(int nSamples, int nBurnIn, TMatrixD &Prt, TGraphAsymmErrors *box,
   {
     PrintPercentDone(i, nSamples + nBurnIn, 1);
 
-    // Get a new proposal point (propT). Update trialR.
+    // Get a new proposal point (propT).
     AssignProposal(box, trialT, propT);
-    trialR = Prt*propT;
 
     // Note that llfunc < 0, priorfunc > 0.
-    p1 = llfunc(trialR) - priorfunc(propT);
+    p1 = llfunc(propT) - priorfunc(propT);
+
+      Printf("ll, prior %6.0f, %6.0f p0, p1, %6.0f, %6.0f",
+             llfunc(propT), priorfunc(propT), p0, p1);
 
     if (AcceptProposal(p0, p1))
     {
