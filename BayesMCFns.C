@@ -22,14 +22,14 @@
 #include <iostream>
 
 
-struct BayesianCredibilityInterval
+struct MaxDensityInterval
 {
-  BayesianCredibilityInterval() :
+  MaxDensityInterval() :
     u1(0), u2(0), u(0), du(0),
     bin(0), bin1(0), bin2(0),
     probRequested(0), probComputed(0) {}
 
-  BayesianCredibilityInterval(double p) :
+  MaxDensityInterval(double p) :
     u1(0), u2(0), u(0), du(0),
     bin(0), bin1(0), bin2(0),
     probRequested(p), probComputed(0) {}
@@ -57,7 +57,7 @@ void AssignProposal(const TGraphAsymmErrors *box, const TVectorD &currentvec,
 bool AcceptProposal(double p0, double p1);
 
 void PrintPercentDone(int i, int N, int k);  // Print i/N (in %) every k%.
-BayesianCredibilityInterval GetBCI(TH1 *hp, double probFrac);
+MaxDensityInterval GetMDI(TH1 *hp, double probFrac);
 
 TGraphAsymmErrors *
 HyperBox(TH1D *h)
@@ -103,8 +103,7 @@ SampleUniform(int nSamples, TVectorD &D, TMatrixD &Prt, TGraphAsymmErrors *box)
 
   ptree->Branch("logL", &logL, "logL/F");
 
-  std::cout << Form("Sampling L(D|T)*pi(T) uniformly...")
-            << std::endl;
+  std::cout << Form("Sampling L(D|T)*pi(T) uniformly...") << std::endl;
 
   for (int i=0; i<nSamples; i++)
   {
@@ -136,8 +135,6 @@ TTree *
 SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
          LogLikeFn &llfunc, LogPrior &priorfunc)
 {
-  // D = measured data, Prt = migration matrix, box = Nt-dim sampling volume.
-  // Alpha and Tmc are used to construct the prior for regularization.
   int Nt = box->GetN();
   double p0, p1;      // Current and proposed (log) probabilities
   float Tpoint[Nt], logL;
@@ -151,24 +148,20 @@ SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
   }
   ptree->Branch("logL", &logL, "logL/F");
 
-  // Note that llfunc < 0, priorfunc > 0.
-  p0 = llfunc(trialT) - priorfunc(trialT);
+  p0 = llfunc(trialT) - priorfunc(trialT); // Note llfunc < 0, priorfunc > 0.
 
-  std::cout << Form("Sampling L(D|T)*pi(T) using MCMC...")
-            << std::endl;
+  std::cout << Form("Sampling L(D|T)*pi(T) using MCMC...") << std::endl;
 
   for (int i=0; i < nSamples + nBurnIn; i++)
   {
     PrintPercentDone(i, nSamples + nBurnIn, 1);
+    
+    AssignProposal(box, trialT, propT); // Get a new proposal point (propT).
 
-    // Get a new proposal point (propT).
-    AssignProposal(box, trialT, propT);
+    p1 = llfunc(propT) - priorfunc(propT); // Note llfunc < 0, priorfunc > 0.
 
-    // Note that llfunc < 0, priorfunc > 0.
-    p1 = llfunc(propT) - priorfunc(propT);
-
-      Printf("ll, prior %6.0f, %6.0f p0, p1, %6.0f, %6.0f",
-             llfunc(propT), priorfunc(propT), p0, p1);
+    // Printf("ll, prior %6.0f, %6.0f p0, p1, %6.0f, %6.0f",
+    //        llfunc(propT), priorfunc(propT), p0, p1);
 
     if (AcceptProposal(p0, p1))
     {
@@ -236,25 +229,25 @@ AcceptProposal(double p0, double p1)
   return false;
 }
 
-BayesianCredibilityInterval
-GetBCI(TH1 *hp, double probFrac)
+MaxDensityInterval
+GetMDI(TH1 *hp, double probFrac)
 {
   // Returns limits of shortest interval in hp containing the
   // probability fraction given by probFrac.
   // The hp histogram is supposed to be a PDF.
-  BayesianCredibilityInterval bci(probFrac);
+  MaxDensityInterval mdi(probFrac);
 
   if (probFrac <= 0. || probFrac >= 1.0)
   {
-    Error("BayesianCredibilityInterval()",
+    Error("MaxDensityInterval()",
           "Requested p %.3f outside 0 < p < 1", probFrac);
-    return bci;
+    return mdi;
   }
 
   double tot = hp->Integral(1,hp->GetNbinsX());
   if (tot < 0.999 || tot > 1.001)
   {
-    Warning("BayesianCredibilityInterval()",
+    Warning("MaxDensityInterval()",
             "PDF histogram integral = %f.\nNormalizing to 1.", tot);
     hp->Scale(1./tot);
   }
@@ -283,8 +276,8 @@ GetBCI(TH1 *hp, double probFrac)
   double p1, p2;
 
   int i99 = TMath::BinarySearch(N, cdf.GetY(), 0.99);
-  bci.u1 = cdf.GetX()[0] - 0.99*cdf.GetEX()[0];
-  bci.u2 = cdf.GetX()[i99] + 0.99*cdf.GetEX()[i99];
+  mdi.u1 = cdf.GetX()[0] - 0.99*cdf.GetEX()[0];
+  mdi.u2 = cdf.GetX()[i99] + 0.99*cdf.GetEX()[i99];
 
   // Last bin in probFrac starting at bin i
   int i2 = 0;
@@ -312,39 +305,39 @@ GetBCI(TH1 *hp, double probFrac)
     if (i2-i+1 < nb)
     {
       nb = i2-i+1;
-      // bci.u1 = cdf.GetX()[i];
-      // bci.u2 = cdf.GetX()[i2];
+      // mdi.u1 = cdf.GetX()[i];
+      // mdi.u2 = cdf.GetX()[i2];
 
-      bci.u1 = cdf.GetX()[i] - 0.99*cdf.GetEX()[i];
-      bci.u2 = cdf.GetX()[i2] + 0.99*cdf.GetEX()[i2];
+      mdi.u1 = cdf.GetX()[i] - 0.99*cdf.GetEX()[i];
+      mdi.u2 = cdf.GetX()[i2] + 0.99*cdf.GetEX()[i2];
     }
   }
 
-  bci.u    = (bci.u1+bci.u2)/2;
-  bci.du   = (bci.u2-bci.u1)/2;
-  bci.bin  = hp->FindBin(bci.u);
-  bci.bin1 = hp->FindBin(bci.u1);
-  bci.bin2 = hp->FindBin(bci.u2);
-  bci.probComputed = hp->Integral(bci.bin1,bci.bin2);
-  bci.cdf = cdf;
+  mdi.u    = (mdi.u1+mdi.u2)/2;
+  mdi.du   = (mdi.u2-mdi.u1)/2;
+  mdi.bin  = hp->FindBin(mdi.u);
+  mdi.bin1 = hp->FindBin(mdi.u1);
+  mdi.bin2 = hp->FindBin(mdi.u2);
+  mdi.probComputed = hp->Integral(mdi.bin1,mdi.bin2);
+  mdi.cdf = cdf;
 
-  double adiff = TMath::Abs(bci.probComputed - bci.probRequested);
+  double adiff = TMath::Abs(mdi.probComputed - mdi.probRequested);
 
   if (adiff > 0.20)
   {
-    Error("GetBCI", "Computed (%.2f) vs. requested (%.2f) prob "
+    Error("GetMDI", "Computed (%.2f) vs. requested (%.2f) prob "
           "mismatch for histogram %s.",
-          bci.probComputed, bci.probRequested, hp->GetName());
+          mdi.probComputed, mdi.probRequested, hp->GetName());
   }
   else if (adiff > 0.05)
   {
-    Warning("GetBCI", "Computed probability %.2f for PDF histogram %s "
+    Warning("GetMDI", "Computed probability %.2f for PDF histogram %s "
             "differs from requested %.2f."
             "\nTry narrower bins if they are close.",
-            bci.probComputed, hp->GetName(), bci.probRequested);
+            mdi.probComputed, hp->GetName(), mdi.probRequested);
   }
 
-  return bci;
+  return mdi;
 }
 
 void
