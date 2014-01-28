@@ -46,18 +46,19 @@ struct MaxDensityInterval
 
 // Function prototypes
 TGraphAsymmErrors *HyperBox(TH1D *h);
-TTree *
-SampleUniform(int nSamples, TVectorD &D, TMatrixD &Prt,
-              TGraphAsymmErrors *box);
-TTree *
-SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
-         LogLikeFn &llfunc, LogPrior &priorfunc);
+TGraphAsymmErrors *SampleVolume(TH1D *h);
+TGraphAsymmErrors *SampleVolumeIdeal(TH1D *h);
+TGraphAsymmErrors *ReducedSampleVolume(TH1D **hmp, TGraphAsymmErrors *old,
+                                       double flo, double fhi);
+TTree *SampleUniform(int nSamples, TVectorD &D, TMatrixD &Prt,
+                     TGraphAsymmErrors *box);
+TTree *SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
+                LogLikeFn &llfunc, LogPrior &priorfunc);
+MaxDensityInterval GetMDI(TH1 *hp, double probFrac);
 void AssignProposal(const TGraphAsymmErrors *box, const TVectorD &currentvec,
                     TVectorD &newvec);
 bool AcceptProposal(double p0, double p1);
-
 void PrintPercentDone(int i, int N, int k);  // Print i/N (in %) every k%.
-MaxDensityInterval GetMDI(TH1 *hp, double probFrac);
 
 TGraphAsymmErrors *
 HyperBox(TH1D *h)
@@ -155,7 +156,7 @@ SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
   for (int i=0; i < nSamples + nBurnIn; i++)
   {
     PrintPercentDone(i, nSamples + nBurnIn, 1);
-    
+
     AssignProposal(box, trialT, propT); // Get a new proposal point (propT).
 
     p1 = llfunc(propT) - priorfunc(propT); // Note llfunc < 0, priorfunc > 0.
@@ -338,6 +339,81 @@ GetMDI(TH1 *hp, double probFrac)
   }
 
   return mdi;
+}
+TGraphAsymmErrors *
+SampleVolume(TH1D *h)
+{
+  int Nt = h->GetNbinsX();
+  TGraphAsymmErrors *g = new TGraphAsymmErrors(Nt);
+
+  // Hyperbox boundaries
+  double min,max,mid;
+  for (int t=0; t<Nt; t++)
+  {
+
+    mid = h->GetBinContent(t+1);
+    min = (mid < 1e5) ? 0.1 : 0.25*mid;
+    max = (mid < 1e5) ? 10*mid : 4*mid;
+
+    double ex = h->GetBinWidth(t+1)/2.04;
+    g->SetPoint(t,h->GetBinCenter(t+1), mid);
+    g->SetPointError(t, ex, ex, mid-min, max-mid);
+  }
+  return g;
+}
+
+TGraphAsymmErrors *
+SampleVolumeIdeal(TH1D *h)
+{
+  int Nt = h->GetNbinsX();
+  TGraphAsymmErrors *g = new TGraphAsymmErrors(Nt);
+
+  // Hyperbox boundaries
+  double min,max,mid;
+  for (int t=0; t<Nt; t++)
+  {
+
+    mid = h->GetBinContent(t+1);
+    min = (mid < 1e4) ? 0.5 : 0.1*mid - t*TMath::Sqrt(mid);
+    max = 2*mid + 100*t*TMath::Sqrt(mid);
+
+    // min = 1./(t+10) * mid;
+    if (min <= 0)
+      min = 0.5;
+    // if (t==0)
+    //   max = 5*mid;
+    // else
+    //   max = (t)*mid;
+
+    double ex = h->GetBinWidth(t+1)/2.04;
+    g->SetPoint(t,h->GetBinCenter(t+1), mid);
+    g->SetPointError(t, ex, ex, mid-min, max-mid);
+  }
+  return g;
+}
+
+TGraphAsymmErrors *
+ReducedSampleVolume(TH1D **hmp, TGraphAsymmErrors *old, double flo, double fhi)
+{
+  // f is a factor to increase the volume
+  TGraphAsymmErrors *g = (TGraphAsymmErrors *)old->Clone();
+
+  double lo, hi;
+  for (int t=0; t<g->GetN(); t++)
+  {
+
+    if (!hmp[t])
+      Error("","!hmp[%d]",t);
+
+    MaxDensityInterval mdi = GetMDI(hmp[t], 0.99);
+    lo = flo*mdi.du;
+    hi = fhi*mdi.du;
+    if (lo < 1.0) lo = 1.0;
+    g->SetPoint(t, g->GetX()[t], mdi.u);
+    g->SetPointEYlow(t, lo);
+    g->SetPointEYhigh(t, hi);
+  }
+  return g;
 }
 
 void
