@@ -25,13 +25,11 @@
 struct MaxDensityInterval
 {
   MaxDensityInterval() :
-    u1(0), u2(0), u(0), du(0),
-    bin(0), bin1(0), bin2(0),
+    u1(0), u2(0), u(0), du(0), bin(0), bin1(0), bin2(0),
     probRequested(0), probComputed(0) {}
 
   MaxDensityInterval(double p) :
-    u1(0), u2(0), u(0), du(0),
-    bin(0), bin1(0), bin2(0),
+    u1(0), u2(0), u(0), du(0), bin(0), bin1(0), bin2(0),
     probRequested(p), probComputed(0) {}
 
   double u1, u2;
@@ -42,6 +40,35 @@ struct MaxDensityInterval
   double probRequested, probComputed;
 
   TGraphErrors cdf;
+};
+
+struct McInput
+{
+  McInput(const TH2D *hA, const TH1D *hb)
+  {
+    TMatrixD M = MatrixUtils::Hist2Matrix(hA);
+    M *= 1./M.Sum();
+
+    TVectorD Mt = MatrixUtils::Hist2Vec(hA->ProjectionY());
+    Mt *= 1./Mt.Sum();
+
+    // In the future, an efficiency vs true pt hist could be passed in.
+    // MatrixUtils::Hist2Vec(heff);
+    TVectorD eff = MatrixUtils::Ones(M.GetNcols());
+    TVectorD Pt  = MatrixUtils::ElemDiv(Mt, eff);        // P(t)
+
+    transferMatrix.ResizeTo(M);
+    transferMatrix = MatrixUtils::DivRowsByVector(M, Pt);  // P(r|t)
+
+    TVectorD b = MatrixUtils::Hist2Vec(hb);
+    dataVec.ResizeTo(b);
+    dataVec = b;
+
+  }
+
+  TMatrixD transferMatrix;   // P(r|t)
+  TVectorD dataVec;
+
 };
 
 // Function prototypes
@@ -347,13 +374,19 @@ SampleVolume(TH1D *h)
   TGraphAsymmErrors *g = new TGraphAsymmErrors(Nt);
 
   // Hyperbox boundaries
-  double min,max,mid;
+  double min,max,mid,rms;
   for (int t=0; t<Nt; t++)
   {
 
     mid = h->GetBinContent(t+1);
-    min = (mid < 1e5) ? 0.1 : 0.25*mid;
-    max = (mid < 1e5) ? 10*mid : 4*mid;
+    rms = TMath::Sqrt(mid);
+    min = 0.1*mid - 50*rms;
+    max = 3.0*mid + 50*rms;
+
+    if (min < 0.5) min = 0.5;
+
+    // min = (mid < 1e5) ? 0.1 : 0.25*mid;
+    // max = (mid < 1e5) ? 10*mid : 4*mid;
 
     double ex = h->GetBinWidth(t+1)/2.04;
     g->SetPoint(t,h->GetBinCenter(t+1), mid);
