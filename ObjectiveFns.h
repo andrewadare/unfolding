@@ -23,25 +23,27 @@ double LogFactorial(int n);
 struct LogLikeFn
 {
   explicit LogLikeFn(TMatrixD &A, TVectorD &b) : fMatrix(A), fData(b) {}
+
+  // Can I add a second constructor with a different signature???
+  explicit LogLikeFn(vector<TMatrixD> &avec,
+                     vector<TVectorD> &bvec,
+                     vector<double> &weights,
+                     vector<int> &flags) :
+    fAVec(avec), fbVec(bvec), fwVec(weights), fFlagVec(flags) {}
+
   virtual double operator()(const TVectorD & /* x */) = 0;
   virtual ~LogLikeFn() {}
 
+  // Use these in inherited functor if only one data/model pair.
   TMatrixD fMatrix;
   TVectorD fData;
-};
 
-// Log Likelihood function allowing multiple model / dataset pairs.
-struct LLMultiFn
-{
-  explicit LLMultiFn(vector<TMatrixD> &avec, vector<TVectorD> &bvec,
-                     vector<double> &weights) :
-    fAVec(avec), fbVec(bvec), fwVec(weights) {}
-  virtual double operator()(const TVectorD & /* x */) = 0;
-  virtual ~LLMultiFn() {}
-
+  // All of these vectors are expected to have equal size.
   vector<TMatrixD> fAVec;
   vector<TVectorD> fbVec;
   vector<double>   fwVec;
+  vector<int>      fFlagVec; // Enable a feature for selected datasets
+
 };
 
 // Prior function base functor
@@ -70,12 +72,13 @@ struct LogPoissonLikeFn : public LogLikeFn
 };
 
 // Log Poisson likelihood fn. for multiple linear systems A[i]*x = b[i]
-struct PoissonLLMultiFn : public LLMultiFn
+struct PoissonLLMultiFn : public LogLikeFn
 {
   explicit PoissonLLMultiFn(vector<TMatrixD> &avec,
                             vector<TVectorD> &bvec,
-                            vector<double> &weights) :
-    LLMultiFn(avec, bvec, weights) {}
+                            vector<double> &weights,
+                            vector<int> &flags) :
+    LogLikeFn(avec, bvec, weights, flags) {}
 
   double operator()(const TVectorD &x)
   {
@@ -84,6 +87,16 @@ struct PoissonLLMultiFn : public LLMultiFn
     for (int i=0; i<nsets; i++)
     {
       TVectorD Ax = fAVec[i]*x;
+
+      // If requested, scale Ax such that sum(Ax) = sum(b).
+      // This causes LL to depend on shape of x, but not |x|.
+      if (fFlagVec[i]==1)
+      {
+        double sum = Ax.Sum();
+        if (sum != 0)
+          Ax *= fbVec[i].Sum() / sum;
+      }
+
       ll += fwVec[i]*LogPoissonLikelihood(fbVec[i], Ax);
     }
     return ll;
