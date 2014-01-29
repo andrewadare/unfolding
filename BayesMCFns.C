@@ -168,44 +168,33 @@ SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
   float Tpoint[Nt], logL;
   TVectorD trialT = MatrixUtils::Graph2Vec(box);
   TVectorD propT(Nt);
-
   TTree *ptree = new TTree("tmcmc", "Metropolis-Hastings Markov chain");
+
   for (int t=0; t<Nt; t++)
-  {
     ptree->Branch(Form("T%d",t), &Tpoint[t], Form("T%d/F",t));
-  }
   ptree->Branch("logL", &logL, "logL/F");
 
   p0 = llfunc(trialT) - priorfunc(trialT); // Note llfunc < 0, priorfunc > 0.
 
   std::cout << Form("Sampling L(D|T)*pi(T) using MCMC...") << std::endl;
-
   for (int i=0; i < nSamples + nBurnIn; i++)
   {
     PrintPercentDone(i, nSamples + nBurnIn, 1);
-
     AssignProposal(box, trialT, propT); // Get a new proposal point (propT).
-
     p1 = llfunc(propT) - priorfunc(propT); // Note llfunc < 0, priorfunc > 0.
-
-    // Printf("ll, prior %6.0f, %6.0f p0, p1, %6.0f, %6.0f",
-    //        llfunc(propT), priorfunc(propT), p0, p1);
 
     if (AcceptProposal(p0, p1))
     {
       logL = p0 = p1;
       trialT = propT;
       for (int t=0; t<Nt; t++)
-      {
         Tpoint[t] = (float)propT(t);
-      }
       if (i >= nBurnIn)
         ptree->Fill();
     }
   }
 
   Printf("Filled tree with %lld entries.", ptree->GetEntries());
-
   return ptree;
 }
 
