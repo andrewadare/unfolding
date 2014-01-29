@@ -17,9 +17,9 @@ double LogFactorial(int n);
 // Base -----------------------------------------------------------------------
 
 // Log likelihood function base functor
-// This is specifically intended for a linear system Ax = b, where x is a 
+// This is specifically intended for a linear system Ax = b, where x is a
 // trial solution, b is a data vector, and A is the transfer matrix.
-// The likelihood is thus computed from a comparison of Ax and b. 
+// The likelihood is thus computed from a comparison of Ax and b.
 struct LogLikeFn
 {
   explicit LogLikeFn(TMatrixD &A, TVectorD &b) : fMatrix(A), fData(b) {}
@@ -28,6 +28,20 @@ struct LogLikeFn
 
   TMatrixD fMatrix;
   TVectorD fData;
+};
+
+// Log Likelihood function allowing multiple model / dataset pairs.
+struct LLMultiFn
+{
+  explicit LLMultiFn(vector<TMatrixD> &avec, vector<TVectorD> &bvec,
+                     vector<double> &weights) :
+    fAVec(avec), fbVec(bvec), fwVec(weights) {}
+  virtual double operator()(const TVectorD & /* x */) = 0;
+  virtual ~LLMultiFn() {}
+
+  vector<TMatrixD> fAVec;
+  vector<TVectorD> fbVec;
+  vector<double>   fwVec;
 };
 
 // Prior function base functor
@@ -43,7 +57,7 @@ struct LogPrior
 
 // Inherited ------------------------------------------------------------------
 
-// Log Poisson likelihood fn. for linear system Ax = b
+// Log Poisson likelihood fn. for linear system A*x = b
 struct LogPoissonLikeFn : public LogLikeFn
 {
   explicit LogPoissonLikeFn(TMatrixD &A, TVectorD &b) : LogLikeFn(A, b) {}
@@ -55,11 +69,41 @@ struct LogPoissonLikeFn : public LogLikeFn
   }
 };
 
+// Log Poisson likelihood fn. for multiple linear systems A[i]*x = b[i]
+struct PoissonLLMultiFn : public LLMultiFn
+{
+  explicit PoissonLLMultiFn(vector<TMatrixD> &avec,
+                            vector<TVectorD> &bvec,
+                            vector<double> &weights) :
+    LLMultiFn(avec, bvec, weights) {}
+
+  double operator()(const TVectorD &x)
+  {
+    double ll = 0;
+    int nsets = fAVec.size();
+    for (int i=0; i<nsets; i++)
+    {
+      TVectorD Ax = fAVec[i]*x;
+      ll += fwVec[i]*LogPoissonLikelihood(fbVec[i], Ax);
+    }
+    return ll;
+  }
+};
+
 // Log Gaussian prior. Penalize disagreement between
 // solution and fPars[1..Nt]. Note offset from first entry:
 // alpha = fPars[0] is the prior precision (reciprocal variance).
 // Use this, for example, to bias your result towards the model truth.
 // Returns a positive quantity.
+/*
+// Example setup:
+std::vector<double> regpars(Nt+1, 0.0); // Prior precision [0], MC truth [1+]
+regpars[0] = 1.0;
+for (int i=0; i<Nt; i++)
+  regpars[i+1] = T(i);
+Chi2RegFn regfunc(regpars);
+*/
+
 struct Chi2RegFn : public LogPrior
 {
   explicit Chi2RegFn(vector<double> &pars) : LogPrior(pars) {}
@@ -103,7 +147,7 @@ struct CurvatureRegFn : public LogPrior
       else
         delta = x(i+1) - 2*x(i) - x(i-1);
 
-        curv += delta*delta / x(i);
+      curv += delta*delta / x(i);
     }
     return alpha*alpha*TMath::Log(curv);
   }
