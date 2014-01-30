@@ -57,18 +57,17 @@ struct McInput
     TVectorD eff = MatrixUtils::Ones(M.GetNcols());
     TVectorD Pt  = MatrixUtils::ElemDiv(Mt, eff);        // P(t)
 
-    transferMatrix.ResizeTo(M);
-    transferMatrix = MatrixUtils::DivRowsByVector(M, Pt);  // P(r|t)
+    Prt.ResizeTo(M);
+    Prt = MatrixUtils::DivRowsByVector(M, Pt);  // P(r|t)
 
-    TVectorD b = MatrixUtils::Hist2Vec(hb);
-    dataVec.ResizeTo(b);
-    dataVec = b;
+    TVectorD bvec = MatrixUtils::Hist2Vec(hb);
+    b.ResizeTo(bvec);
+    b = bvec;
 
   }
 
-  TMatrixD transferMatrix;   // P(r|t)
-  TVectorD dataVec;
-
+  TMatrixD Prt;   // P(r|t)
+  TVectorD b;
 };
 
 // Function prototypes

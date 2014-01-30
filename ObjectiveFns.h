@@ -89,7 +89,7 @@ struct PoissonLLMultiFn : public LogLikeFn
       TVectorD Ax = fAVec[i]*x;
 
       // If requested, scale Ax such that sum(Ax) = sum(b).
-      // This causes LL to depend on shape of x, but not |x|.
+      // This causes LL to depend on shape of Ax, but not ||Ax||.
       if (fFlagVec[i]==1)
       {
         double sum = Ax.Sum();
@@ -147,20 +147,28 @@ struct CurvatureRegFn : public LogPrior
     int iskip    = fPars.size() > 1 ? fPars[1] : -1;
     double delta = 0;
     double curv  = 0;
+    int nx = x.GetNrows();
 
-    for (int i=1; i<x.GetNrows()-1; i++)
+    TVectorD w(x);
+    if ((int)fPars.size()==nx+2)
     {
-      if (x(i) == 0)
+      for (int i=0; i<nx; i++)
+        w(i) /= fPars[i+2];
+    }
+
+    for (int i=1; i<nx-1; i++)
+    {
+      if (w(i) == 0)
         continue;
 
       if (i == iskip - 1)
-        delta = x(i-1) - x(i);
+        delta = w(i-1) - w(i);
       else if (i == iskip)
-        delta = x(i+1) - x(i);
+        delta = w(i+1) - w(i);
       else
-        delta = x(i+1) - 2*x(i) - x(i-1);
+        delta = w(i+1) - 2*w(i) - w(i-1);
 
-      curv += delta*delta / x(i);
+      curv += delta*delta / w(i);
     }
     return alpha*alpha*TMath::Log(curv);
   }
