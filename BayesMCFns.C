@@ -44,9 +44,12 @@ struct MaxDensityInterval
 
 struct McInput
 {
-  McInput(const TH2D *hA, const TH1D *hb)
+  // TODO make default hbin1, hbin2 to cover full measured range
+  // hbin1,2 are histogram bins (1..N), not matrix/vector indices (0..N-1)
+  McInput(const TH2D *hA, const TH1D *hb, const int hbin1, const int hbin2)
   {
-    TMatrixD M = MatrixUtils::Hist2Matrix(hA);
+    TMatrixD mA = MatrixUtils::Hist2Matrix(hA);
+    TMatrixD M = mA.GetSub(hbin1-1, hbin2-1, 0, mA.GetNcols()-1);
     M *= 1./M.Sum();
 
     TVectorD Mt = MatrixUtils::Hist2Vec(hA->ProjectionY());
@@ -60,10 +63,10 @@ struct McInput
     Prt.ResizeTo(M);
     Prt = MatrixUtils::DivRowsByVector(M, Pt);  // P(r|t)
 
-    TVectorD bvec = MatrixUtils::Hist2Vec(hb);
+    TVectorD vb = MatrixUtils::Hist2Vec(hb);
+    TVectorD bvec = vb.GetSub(hbin1-1, hbin2-1); 
     b.ResizeTo(bvec);
     b = bvec;
-
   }
 
   TMatrixD Prt;   // P(r|t)
@@ -163,7 +166,6 @@ SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
          LogLikeFn &llfunc, LogPrior &priorfunc)
 {
   int Nt = box->GetN();
-  double p0, p1;      // Current and proposed (log) probabilities
   float Tpoint[Nt], logL;
   TVectorD trialT = MatrixUtils::Graph2Vec(box);
   TVectorD propT(Nt);
@@ -173,14 +175,25 @@ SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
     ptree->Branch(Form("T%d",t), &Tpoint[t], Form("T%d/F",t));
   ptree->Branch("logL", &logL, "logL/F");
 
-  p0 = llfunc(trialT) - priorfunc(trialT); // Note llfunc < 0, priorfunc > 0.
+  // Note llfunc < 0, priorfunc > 0.
+  double p0 = llfunc(trialT) - priorfunc(trialT);
+
+  // Printf("Initial log(L) %.1f, log(pi) %.1f",
+  //        llfunc(trialT), priorfunc(trialT));
 
   std::cout << Form("Sampling L(D|T)*pi(T) using MCMC...") << std::endl;
   for (int i=0; i < nSamples + nBurnIn; i++)
   {
     PrintPercentDone(i, nSamples + nBurnIn, 1);
     AssignProposal(box, trialT, propT); // Get a new proposal point (propT).
-    p1 = llfunc(propT) - priorfunc(propT); // Note llfunc < 0, priorfunc > 0.
+
+    // Compute log likelihood and log prior.
+    // Note llfunc < 0, priorfunc > 0.
+    double llf = llfunc(propT);
+    double lpf = priorfunc(propT);
+    double p1  = llf - lpf;
+
+    // Printf("llf %.1f lpdf %.1f", llf, lpf);
 
     if (AcceptProposal(p0, p1))
     {
@@ -362,14 +375,12 @@ SampleVolume(TH1D *h)
   TGraphAsymmErrors *g = new TGraphAsymmErrors(Nt);
 
   // Hyperbox boundaries
-  double min,max,mid,rms;
   for (int t=0; t<Nt; t++)
   {
-
-    mid = h->GetBinContent(t+1);
-    rms = TMath::Sqrt(mid);
-    min = 0.1*mid - 50*rms;
-    max = 3.0*mid + 50*rms;
+    double mid = h->GetBinContent(t+1);
+    double rms = TMath::Sqrt(mid);
+    double min = 0.1*mid - 10*rms;
+    double max = 10.0*mid + 10*rms;
 
     if (min < 0.5) min = 0.5;
 
@@ -390,13 +401,11 @@ SampleVolumeIdeal(TH1D *h)
   TGraphAsymmErrors *g = new TGraphAsymmErrors(Nt);
 
   // Hyperbox boundaries
-  double min,max,mid;
   for (int t=0; t<Nt; t++)
   {
-
-    mid = h->GetBinContent(t+1);
-    min = (mid < 1e4) ? 0.5 : 0.1*mid - t*TMath::Sqrt(mid);
-    max = 2*mid + 100*t*TMath::Sqrt(mid);
+    double mid = h->GetBinContent(t+1);
+    double min = (mid < 1e4) ? 0.5 : 0.1*mid - t*TMath::Sqrt(mid);
+    double max = 2*mid + 100*t*TMath::Sqrt(mid);
 
     // min = 1./(t+10) * mid;
     if (min <= 0)
@@ -419,16 +428,14 @@ ReducedSampleVolume(TH1D **hmp, TGraphAsymmErrors *old, double flo, double fhi)
   // f is a factor to increase the volume
   TGraphAsymmErrors *g = (TGraphAsymmErrors *)old->Clone();
 
-  double lo, hi;
   for (int t=0; t<g->GetN(); t++)
   {
-
     if (!hmp[t])
       Error("","!hmp[%d]",t);
 
     MaxDensityInterval mdi = GetMDI(hmp[t], 0.99);
-    lo = flo*mdi.du;
-    hi = fhi*mdi.du;
+    double lo = flo*mdi.du;
+    double hi = fhi*mdi.du;
     if (lo < 1.0) lo = 1.0;
     g->SetPoint(t, g->GetX()[t], mdi.u);
     g->SetPointEYlow(t, lo);
