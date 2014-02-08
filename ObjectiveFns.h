@@ -166,10 +166,13 @@ struct CurvatureRegFn : public LogPrior
       else if (i == iskip)
         delta = w(i+1) - w(i);
       else
-        delta = w(i+1) - 2*w(i) - w(i-1);
+        delta = w(i+1) - 2*w(i) + w(i-1);
 
-      curv += delta*delta / w(i);
+      curv += delta*delta;
     }
+    if (curv <= 0)
+      return 0;
+
     return alpha*alpha*TMath::Log(curv);
   }
 };
