@@ -4,7 +4,6 @@
 // in "Fully Bayesian Unfolding" by G. Choudalakis (arXiv:1201.4612v4)
 //
 // Andrew Adare andrew.adare@colorado.edu
-// March 2013
 
 #include "TH1.h"
 #include "TH2.h"
@@ -23,8 +22,6 @@
 #ifndef ObjectiveFns_h
 #include "ObjectiveFns.h"
 #endif
-
-
 
 struct MaxDensityInterval
 {
@@ -76,7 +73,7 @@ struct McInput
     // In the future, an efficiency vs true pt hist could be passed in.
     // MatrixUtils::Hist2Vec(heff);
     TVectorD eff = MatrixUtils::Ones(M.GetNcols());
-    TVectorD Pt  = MatrixUtils::ElemDiv(Mt, eff);        // P(t)
+    TVectorD Pt  = MatrixUtils::ElemDiv(Mt, eff);  // P(t)
 
     Prt.ResizeTo(M);
     Prt = MatrixUtils::DivRowsByVector(M, Pt);  // P(r|t)
@@ -101,92 +98,6 @@ struct McInput
   TVectorD b;
   TVectorD bkg;
 };
-
-/*
-struct McInput
-{
-  // hbin1,2 are histogram bins (1..N), not matrix/vector indices (0..N-1)
-
-  McInput(const TH2D *hA, const TH1D *hb, const TH1D *hBkg)
-  {
-    Init(hA, hb, hBkg, -1, -1, -1, -1);
-  }
-
-  McInput(const TH2D *hA,
-          const TH1D *hb,
-          const TH1D *hBkg,
-          const int hbin1,
-          const int hbin2)
-  {
-    Init(hA, hb, hBkg, hbin1, hbin2, -1, -1);
-  }
-
-  McInput(const TH2D *hA,
-          const TH1D *hb,
-          const TH1D *hBkg,
-          const int hbin1,
-          const int hbin2,
-          const int hbin3,
-          const int hbin4)
-  {
-    Init(hA, hb, hBkg, hbin1, hbin2, hbin3, hbin4);
-  }
-
-  void Init(const TH2D *hA,
-            const TH1D *hb,
-            const TH1D *hBkg,
-            const int hbin1,
-            const int hbin2,
-            const int hbin3,
-            const int hbin4)
-  {
-    TMatrixD mA = MatrixUtils::Hist2Matrix(hA);
-    TVectorD vb = MatrixUtils::Hist2Vec(hb);
-
-    // If full measured range is to be used
-    TMatrixD M = mA;
-    b.ResizeTo(vb);
-    b = vb;
-
-    // If one sub-interval is to be used
-    if (hbin1 > 0 && hbin2 > hbin1 && hbin3 < 0 && hbin4 < 0)
-    {
-      TMatrixD Mtmp = mA.GetSub(hbin1-1, hbin2-1, 0, mA.GetNcols()-1);
-      M.ResizeTo(Mtmp);
-      M = Mtmp;
-
-      TVectorD btmp = vb.GetSub(hbin1-1, hbin2-1);
-      b.ResizeTo(btmp);
-      b = btmp;
-    }
-
-    // else if two measured sub-intervals are to be used...
-    // if (hbin1 > 0 && hbin2 > hbin1 && hbin3 > hbin2 && hbin4 > hbin3)
-    // < Insert pain-in-the-ass code here >
-
-    TVectorD Mt = MatrixUtils::Hist2Vec(hA->ProjectionY());
-        Mt *= 1./Mt.Sum();
-
-    Prt.ResizeTo(M);
-    Prt = MatrixUtils::DivRowsByVector(M, Mt);  // P(r|t)
-
-    // Assign background vector, if provided
-    if (hBkg)
-    {
-      TVectorD vbkg = MatrixUtils::Hist2Vec(hBkg);
-      TVectorD sub = vbkg.GetSub(hbin1-1, hbin2-1);
-      bkg.ResizeTo(sub);
-      bkg = sub;
-    }
-    else
-      bkg.ResizeTo(b.GetNrows());
-  }
-
-  TMatrixD Prt;   // P(r|t)
-  TVectorD b;
-  TVectorD bkg;
-};
-*/
 
 // Function prototypes
 TGraphAsymmErrors *HyperBox(TH1D *h);
