@@ -45,7 +45,9 @@ struct MaxDensityInterval
 
 struct McInput
 {
-  // Create matrix/vector objects from hists for likelihood functor input
+  // Create matrix/vector objects from hists for likelihood functor input.
+  // Providing b1,b2 creates a system in the subrange b1-b2.
+  // Adding b3,b4 creates a concatenation of the b1-b2 and b3-b4 subranges.
   // b1-4 are histogram bins (1..N), not matrix/vector indices (0..N-1)
   McInput(const TH2D *hA, const TH1D *hb, TH1D *hBkg = 0,
           const int b1 = -1, const int b2 = -1,
@@ -57,14 +59,22 @@ struct McInput
     int row4 = b4 > 0 ? b4 - 1 : -1;
 
     TAxis *ax = hA->GetXaxis();
-    Printf("Selected data range: %.2f-%.2f, matrix rows %d-%d",
+    Printf("Selected data range: [%.2f, %.2f], matrix rows %d-%d",
            ax->GetBinLowEdge(row1+1), ax->GetBinUpEdge(row2+1), row1, row2);
-    if (b3>0)
-      Printf("Second range: %.2f-%.2f, matrix rows %d-%d",
+    if (b3>0 && b4>b3)
+      Printf("       Second range: [%.2f, %.2f], matrix rows %d-%d",
              ax->GetBinLowEdge(row3+1), ax->GetBinUpEdge(row4+1), row3, row4);
 
     TMatrixD A = MatrixUtils::Hist2Matrix(hA);
     TMatrixD M = A.GetSub(row1, row2, 0, A.GetNcols()-1);
+
+    if (b3>0 && b4>b3) // Expand M to include a second sub-range, if valid
+    {
+      TMatrixD M1 = M;
+      TMatrixD M2 = A.GetSub(row3, row4, 0, A.GetNcols()-1);
+      M.ResizeTo(M1.GetNrows() + M2.GetNrows(), M1.GetNcols());
+      M.SetSub(M1.GetNrows(), 0, M2);
+    }
 
     TVectorD Mt = MatrixUtils::ColSum(M);
     M *= 1./M.Sum();
@@ -83,15 +93,27 @@ struct McInput
     b.ResizeTo(bsub1);
     b = bsub1;
 
-    bkg.ResizeTo(b);
+    if (b3>0 && b4>b3) // Expand b to include a second sub-range, if valid
+    {
+      TVectorD bsub2 = vb.GetSub(row3, row4);
+      b.ResizeTo(bsub1.GetNrows() + bsub2.GetNrows());
+      b.SetSub(bsub1.GetNrows(), bsub2);
+    }
+
+    bkg.ResizeTo(b); // If !hBkg, this remains (0,0,0,...)' 
     if (hBkg)
     {
       TVectorD vbkg = MatrixUtils::Hist2Vec(hBkg);
-      TVectorD sub1 = vbkg.GetSub(row1, row2);
-      bkg.ResizeTo(sub1);
-      bkg = sub1;
+      TVectorD bkg1 = vbkg.GetSub(row1, row2);
+      bkg.ResizeTo(bkg1);
+      bkg = bkg1;
+      if (b3>0 && b4>b3) // Expand bkg to include a second sub-range, if valid
+      {
+        TVectorD bkg2 = vbkg.GetSub(row3, row4);
+        bkg.ResizeTo(bkg1.GetNrows() + bkg2.GetNrows());
+        bkg.SetSub(bkg1.GetNrows(), bkg2);
+      }
     }
-
   }
 
   TMatrixD Prt;   // P(r|t)
@@ -219,7 +241,7 @@ SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
     double lpf = priorfunc(propT);
     double p1  = llf - lpf;
 
-    // Printf("llf %.1f lpdf %.1f", llf, lpf);
+    // Printf("llf %.1f lpf %.1f", llf, lpf);
 
     if (AcceptProposal(p0, p1))
     {
