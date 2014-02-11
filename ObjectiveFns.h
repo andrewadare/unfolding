@@ -1,6 +1,9 @@
 // ObjectiveFns.h
 // Stateful functions for use in optimization algorithms.
 
+#ifndef ObjectiveFns_h
+#define ObjectiveFns_h
+
 #include <TMath.h>
 #include <TVectorD.h>
 #include <vector>
@@ -27,9 +30,14 @@ struct LogLikeFn
   // Can I add a second constructor with a different signature???
   explicit LogLikeFn(vector<TMatrixD> &avec,
                      vector<TVectorD> &bvec,
+                     vector<TVectorD> &bkgvec,
                      vector<double> &weights,
                      vector<int> &flags) :
-    fAVec(avec), fbVec(bvec), fwVec(weights), fFlagVec(flags) {}
+    fAVec(avec),
+    fbVec(bvec),
+    fBkgVec(bkgvec),
+    fwVec(weights),
+    fFlagVec(flags) {}
 
   virtual double operator()(const TVectorD & /* x */) = 0;
   virtual ~LogLikeFn() {}
@@ -41,6 +49,7 @@ struct LogLikeFn
   // All of these vectors are expected to have equal size.
   vector<TMatrixD> fAVec;
   vector<TVectorD> fbVec;
+  vector<TVectorD> fBkgVec;
   vector<double>   fwVec;
   vector<int>      fFlagVec; // Enable a feature for selected datasets
 
@@ -76,9 +85,10 @@ struct PoissonLLMultiFn : public LogLikeFn
 {
   explicit PoissonLLMultiFn(vector<TMatrixD> &avec,
                             vector<TVectorD> &bvec,
+                            vector<TVectorD> &bkgvec,
                             vector<double> &weights,
                             vector<int> &flags) :
-    LogLikeFn(avec, bvec, weights, flags) {}
+    LogLikeFn(avec, bvec, bkgvec, weights, flags) {}
 
   double operator()(const TVectorD &x)
   {
@@ -86,7 +96,7 @@ struct PoissonLLMultiFn : public LogLikeFn
     int nsets = fAVec.size();
     for (int i=0; i<nsets; i++)
     {
-      TVectorD Ax = fAVec[i]*x;
+      TVectorD Ax = fAVec[i]*x + fBkgVec[i];
 
       // If requested, scale Ax such that sum(Ax) = sum(b).
       // This causes LL to depend on shape of Ax, but not ||Ax||.
@@ -261,3 +271,4 @@ LogFactorial(int n)
 
   return  TMath::LnGamma(n+1);
 }
+#endif
