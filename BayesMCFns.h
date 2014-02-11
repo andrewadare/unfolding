@@ -17,9 +17,13 @@
 #include "TMath.h"
 #include "TTree.h"
 #include "TRandom3.h"
-#include "ObjectiveFns.h"
 
 #include <iostream>
+
+#ifndef ObjectiveFns_h
+#include "ObjectiveFns.h"
+#endif
+
 
 
 struct MaxDensityInterval
@@ -44,15 +48,29 @@ struct MaxDensityInterval
 
 struct McInput
 {
-  // TODO make default hbin1, hbin2 to cover full measured range
-  // hbin1,2 are histogram bins (1..N), not matrix/vector indices (0..N-1)
-  McInput(const TH2D *hA, const TH1D *hb, const int hbin1, const int hbin2)
+  // Create matrix/vector objects from hists for likelihood functor input
+  // b1-4 are histogram bins (1..N), not matrix/vector indices (0..N-1)
+  McInput(const TH2D *hA, const TH1D *hb, TH1D *hBkg = 0,
+          const int b1 = -1, const int b2 = -1,
+          const int b3 = -1, const int b4 = -1)
   {
-    TMatrixD mA = MatrixUtils::Hist2Matrix(hA);
-    TMatrixD M = mA.GetSub(hbin1-1, hbin2-1, 0, mA.GetNcols()-1);
-    M *= 1./M.Sum();
+    int row1 = b1 > 0 ? b1 - 1 : 0;
+    int row2 = b2 > 0 ? b2 - 1 : hA->GetNbinsX() - 1;
+    int row3 = b3 > 0 ? b3 - 1 : -1;
+    int row4 = b4 > 0 ? b4 - 1 : -1;
 
-    TVectorD Mt = MatrixUtils::Hist2Vec(hA->ProjectionY());
+    TAxis *ax = hA->GetXaxis();
+    Printf("Selected data range: %.2f-%.2f, matrix rows %d-%d",
+           ax->GetBinLowEdge(row1+1), ax->GetBinUpEdge(row2+1), row1, row2);
+    if (b3>0)
+      Printf("Second range: %.2f-%.2f, matrix rows %d-%d",
+             ax->GetBinLowEdge(row3+1), ax->GetBinUpEdge(row4+1), row3, row4);
+
+    TMatrixD A = MatrixUtils::Hist2Matrix(hA);
+    TMatrixD M = A.GetSub(row1, row2, 0, A.GetNcols()-1);
+
+    TVectorD Mt = MatrixUtils::ColSum(M);
+    M *= 1./M.Sum();
     Mt *= 1./Mt.Sum();
 
     // In the future, an efficiency vs true pt hist could be passed in.
@@ -64,14 +82,111 @@ struct McInput
     Prt = MatrixUtils::DivRowsByVector(M, Pt);  // P(r|t)
 
     TVectorD vb = MatrixUtils::Hist2Vec(hb);
-    TVectorD bvec = vb.GetSub(hbin1-1, hbin2-1); 
-    b.ResizeTo(bvec);
-    b = bvec;
+    TVectorD bsub1 = vb.GetSub(row1, row2);
+    b.ResizeTo(bsub1);
+    b = bsub1;
+
+    bkg.ResizeTo(b);
+    if (hBkg)
+    {
+      TVectorD vbkg = MatrixUtils::Hist2Vec(hBkg);
+      TVectorD sub1 = vbkg.GetSub(row1, row2);
+      bkg.ResizeTo(sub1);
+      bkg = sub1;
+    }
+
   }
 
   TMatrixD Prt;   // P(r|t)
   TVectorD b;
+  TVectorD bkg;
 };
+
+/*
+struct McInput
+{
+  // hbin1,2 are histogram bins (1..N), not matrix/vector indices (0..N-1)
+
+  McInput(const TH2D *hA, const TH1D *hb, const TH1D *hBkg)
+  {
+    Init(hA, hb, hBkg, -1, -1, -1, -1);
+  }
+
+  McInput(const TH2D *hA,
+          const TH1D *hb,
+          const TH1D *hBkg,
+          const int hbin1,
+          const int hbin2)
+  {
+    Init(hA, hb, hBkg, hbin1, hbin2, -1, -1);
+  }
+
+  McInput(const TH2D *hA,
+          const TH1D *hb,
+          const TH1D *hBkg,
+          const int hbin1,
+          const int hbin2,
+          const int hbin3,
+          const int hbin4)
+  {
+    Init(hA, hb, hBkg, hbin1, hbin2, hbin3, hbin4);
+  }
+
+  void Init(const TH2D *hA,
+            const TH1D *hb,
+            const TH1D *hBkg,
+            const int hbin1,
+            const int hbin2,
+            const int hbin3,
+            const int hbin4)
+  {
+    TMatrixD mA = MatrixUtils::Hist2Matrix(hA);
+    TVectorD vb = MatrixUtils::Hist2Vec(hb);
+
+    // If full measured range is to be used
+    TMatrixD M = mA;
+    b.ResizeTo(vb);
+    b = vb;
+
+    // If one sub-interval is to be used
+    if (hbin1 > 0 && hbin2 > hbin1 && hbin3 < 0 && hbin4 < 0)
+    {
+      TMatrixD Mtmp = mA.GetSub(hbin1-1, hbin2-1, 0, mA.GetNcols()-1);
+      M.ResizeTo(Mtmp);
+      M = Mtmp;
+
+      TVectorD btmp = vb.GetSub(hbin1-1, hbin2-1);
+      b.ResizeTo(btmp);
+      b = btmp;
+    }
+
+    // else if two measured sub-intervals are to be used...
+    // if (hbin1 > 0 && hbin2 > hbin1 && hbin3 > hbin2 && hbin4 > hbin3)
+    // < Insert pain-in-the-ass code here >
+
+    TVectorD Mt = MatrixUtils::Hist2Vec(hA->ProjectionY());
+        Mt *= 1./Mt.Sum();
+
+    Prt.ResizeTo(M);
+    Prt = MatrixUtils::DivRowsByVector(M, Mt);  // P(r|t)
+
+    // Assign background vector, if provided
+    if (hBkg)
+    {
+      TVectorD vbkg = MatrixUtils::Hist2Vec(hBkg);
+      TVectorD sub = vbkg.GetSub(hbin1-1, hbin2-1);
+      bkg.ResizeTo(sub);
+      bkg = sub;
+    }
+    else
+      bkg.ResizeTo(b.GetNrows());
+  }
+
+  TMatrixD Prt;   // P(r|t)
+  TVectorD b;
+  TVectorD bkg;
+};
+*/
 
 // Function prototypes
 TGraphAsymmErrors *HyperBox(TH1D *h);
