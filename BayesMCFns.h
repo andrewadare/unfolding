@@ -49,7 +49,7 @@ struct McInput
   // Providing b1,b2 creates a system in the subrange b1-b2.
   // Adding b3,b4 creates a concatenation of the b1-b2 and b3-b4 subranges.
   // b1-4 are histogram bins (1..N), not matrix/vector indices (0..N-1)
-  McInput(const TH2D *hA, const TH1D *hb, TH1D *hBkg = 0,
+  McInput(const TH2D *hA, const TH1D *hb, TH1D *hBkg = 0, /*TH1D *hEff = 0*/
           const int b1 = -1, const int b2 = -1,
           const int b3 = -1, const int b4 = -1)
   {
@@ -65,25 +65,46 @@ struct McInput
       Printf("       Second range: [%.2f, %.2f], matrix rows %d-%d",
              ax->GetBinLowEdge(row3+1), ax->GetBinUpEdge(row4+1), row3, row4);
 
-    TMatrixD A = MatrixUtils::Hist2Matrix(hA);
-    TMatrixD M = A.GetSub(row1, row2, 0, A.GetNcols()-1);
+    // Notation:
+    // A: Matrix filled by generative model with (arbitrary) integral N.
+    // M: Matrix of joint probabilities P(r,t). M = 1/N * A.
+    // M1 (and M2 if requested): Sub-matrices of M (selected rows, all columns)
+    // Pt: Vector of marginal probs P(t) = sum_r P(r,t).
+    // Prt: Matrix of conditional probs P(r|t) = M/(vector of M column sums)
 
-    if (b3>0 && b4>b3) // Expand M to include a second sub-range, if valid
+    // A
+    TMatrixD A = MatrixUtils::Hist2Matrix(hA);
+    double N = A.Sum();
+    int ncols = A.GetNcols();
+
+    // M
+    TMatrixD M(A);
+    M *= 1./N;
+    if (b1>0 && b2>b1) // Create M1, if requested
     {
-      TMatrixD M1 = M;
-      TMatrixD M2 = A.GetSub(row3, row4, 0, A.GetNcols()-1);
-      M.ResizeTo(M1.GetNrows() + M2.GetNrows(), M1.GetNcols());
-      M.SetSub(M1.GetNrows(), 0, M2);
+      TMatrixD M1 = M.GetSub(row1, row2, 0, ncols - 1);
+      if (b3>b2 && b4>b3) // Also M2, if requested
+      {
+        TMatrixD M2 = M.GetSub(row3, row4, 0, ncols - 1);
+        M.ResizeTo(M1.GetNrows() + M2.GetNrows(), ncols);
+        M.SetSub(0, 0, M1);
+        M.SetSub(M1.GetNrows(), 0, M2);
+      }
+      else
+      {
+        M.ResizeTo(M1);
+        M.SetSub(0, 0, M1);
+      }
+
+      // Since M has lost some rows, renormalize it.
+      // (This is a bit pedantic: for this application, only 
+      // P(r|t) = M/Pt is used, which is independent of normalization of M.)
+      M *= 1./M.Sum();
     }
 
-    TVectorD Mt = MatrixUtils::ColSum(M);
-    M *= 1./M.Sum();
-    Mt *= 1./Mt.Sum();
-
     // In the future, an efficiency vs true pt hist could be passed in.
-    // MatrixUtils::Hist2Vec(heff);
-    TVectorD eff = MatrixUtils::Ones(M.GetNcols());
-    TVectorD Pt  = MatrixUtils::ElemDiv(Mt, eff);  // P(t)
+    // For now, continue as if eff(t) = 1.0 for all t.
+    TVectorD Pt = MatrixUtils::ColSum(M);
 
     Prt.ResizeTo(M);
     Prt = MatrixUtils::DivRowsByVector(M, Pt);  // P(r|t)
@@ -100,7 +121,7 @@ struct McInput
       b.SetSub(bsub1.GetNrows(), bsub2);
     }
 
-    bkg.ResizeTo(b); // If !hBkg, this remains (0,0,0,...)' 
+    bkg.ResizeTo(b); // If !hBkg, this remains (0,0,0,...)'
     if (hBkg)
     {
       TVectorD vbkg = MatrixUtils::Hist2Vec(hBkg);
@@ -117,8 +138,8 @@ struct McInput
   }
 
   TMatrixD Prt;   // P(r|t)
-  TVectorD b;
-  TVectorD bkg;
+  TVectorD b;     // Data
+  TVectorD bkg;   // Additive data background
 };
 
 // Function prototypes
