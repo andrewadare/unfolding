@@ -80,6 +80,33 @@ struct McInput
     // M
     TMatrixD M(A);
     M *= 1./N;
+
+    // DELETE THIS LATER =====================================================
+    TVectorD Pt = MatrixUtils::ColSum(M);
+    Prt.ResizeTo(M);
+    Prt = MatrixUtils::DivRowsByVector(M, Pt);  // P(r|t)
+    if (b1>0 && b2>b1) // Create M1, if requested
+    {
+      TMatrixD M1 = Prt.GetSub(row1, row2, 0, ncols - 1);
+      if (b3>b2 && b4>b3) // Also M2, if requested
+      {
+        TMatrixD M2 = Prt.GetSub(row3, row4, 0, ncols - 1);
+        Prt.ResizeTo(M1.GetNrows() + M2.GetNrows(), ncols);
+        Prt.SetSub(0, 0, M1);
+        Prt.SetSub(M1.GetNrows(), 0, M2);
+      }
+      else
+      {
+        Prt.ResizeTo(M1);
+        Prt.SetSub(0, 0, M1);
+      }
+    }
+    // DELETE THIS LATER =====================================================
+
+
+    // RESTORE THIS LATER =====================================================
+    /*
+
     if (b1>0 && b2>b1) // Create M1, if requested
     {
       TMatrixD M1 = M.GetSub(row1, row2, 0, ncols - 1);
@@ -97,7 +124,7 @@ struct McInput
       }
 
       // Since M has lost some rows, renormalize it.
-      // (This is a bit pedantic: for this application, only 
+      // (This is a bit pedantic: for this application, only
       // P(r|t) = M/Pt is used, which is independent of normalization of M.)
       M *= 1./M.Sum();
     }
@@ -105,9 +132,10 @@ struct McInput
     // In the future, an efficiency vs true pt hist could be passed in.
     // For now, continue as if eff(t) = 1.0 for all t.
     TVectorD Pt = MatrixUtils::ColSum(M);
-
     Prt.ResizeTo(M);
     Prt = MatrixUtils::DivRowsByVector(M, Pt);  // P(r|t)
+    */
+    // RESTORE THIS LATER =====================================================
 
     TVectorD vb = MatrixUtils::Hist2Vec(hb);
     TVectorD bsub1 = vb.GetSub(row1, row2);
@@ -144,7 +172,13 @@ struct McInput
 
 // Function prototypes
 TGraphAsymmErrors *HyperBox(TH1D *h);
-TGraphAsymmErrors *SampleVolume(TH1D *h);
+TGraphAsymmErrors *SampleVolume(TH1D *h,
+                                const double scaleLower= 0.25,
+                                const double scaleUpper= 4.0,
+                                const double nrmsLower = 2.0,
+                                const double nrmsUpper = 2.0,
+                                const double absMin    = 0.0);
+
 TGraphAsymmErrors *SampleVolumeIdeal(TH1D *h);
 TGraphAsymmErrors *ReducedSampleVolume(TH1D **hmp, TGraphAsymmErrors *old,
                                        double flo, double fhi);
@@ -438,7 +472,12 @@ GetMDI(TH1 *hp, double probFrac)
   return mdi;
 }
 TGraphAsymmErrors *
-SampleVolume(TH1D *h)
+SampleVolume(TH1D *h,
+             const double scaleLower,
+             const double scaleUpper,
+             const double nrmsLower,
+             const double nrmsUpper,
+             const double absMin)
 {
   int Nt = h->GetNbinsX();
   TGraphAsymmErrors *g = new TGraphAsymmErrors(Nt);
@@ -447,14 +486,15 @@ SampleVolume(TH1D *h)
   for (int t=0; t<Nt; t++)
   {
     double mid = h->GetBinContent(t+1);
-    double rms = TMath::Sqrt(mid);
-    double min = 0.1*mid - 10*rms;
-    double max = 10.0*mid + 10*rms;
+    double rms = TMath::Sqrt(mid);    
+    double min = scaleLower * mid - nrmsLower * rms;
+    double max = scaleUpper * mid + nrmsUpper * rms;
 
-    if (min < 0.5) min = 0.5;
+    // double min = 0.1*mid - 10*rms;
+    // double max = 5.0*mid + 10*rms;
 
-    // min = (mid < 1e5) ? 0.1 : 0.25*mid;
-    // max = (mid < 1e5) ? 10*mid : 4*mid;
+    if (min < absMin) 
+      min = absMin;
 
     double ex = h->GetBinWidth(t+1)/2.04;
     g->SetPoint(t,h->GetBinCenter(t+1), mid);
