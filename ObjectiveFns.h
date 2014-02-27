@@ -27,7 +27,6 @@ struct LogLikeFn
 {
   explicit LogLikeFn(TMatrixD &A, TVectorD &b) : fMatrix(A), fData(b) {}
 
-  // Can I add a second constructor with a different signature???
   explicit LogLikeFn(vector<TMatrixD> &avec,
                      vector<TVectorD> &bvec,
                      vector<TVectorD> &bkgvec,
