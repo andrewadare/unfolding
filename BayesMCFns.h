@@ -18,6 +18,7 @@
 #include "TRandom3.h"
 
 #include <iostream>
+#include <deque>
 
 #ifndef ObjectiveFns_h
 #include "ObjectiveFns.h"
@@ -171,26 +172,37 @@ struct McInput
 };
 
 // Function prototypes
-TGraphAsymmErrors *HyperBox(TH1D *h);
-TGraphAsymmErrors *SampleVolume(TH1D *h,
-                                const double scaleLower= 0.25,
-                                const double scaleUpper= 4.0,
-                                const double nrmsLower = 2.0,
-                                const double nrmsUpper = 2.0,
-                                const double absMin    = 0.0);
+TGraphAsymmErrors *
+HyperBox(TH1D *h);
+TGraphAsymmErrors *
+SampleVolume(TH1D *h,
+             const double scaleLower= 0.25,
+             const double scaleUpper= 4.0,
+             const double nrmsLower = 2.0,
+             const double nrmsUpper = 2.0,
+             const double absMin    = 0.0);
 
-TGraphAsymmErrors *SampleVolumeIdeal(TH1D *h);
-TGraphAsymmErrors *ReducedSampleVolume(TH1D **hmp, TGraphAsymmErrors *old,
-                                       double flo, double fhi);
-TTree *SampleUniform(int nSamples, TVectorD &D, TMatrixD &Prt,
-                     TGraphAsymmErrors *box);
-TTree *SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
-                LogLikeFn &llfunc, LogPrior &priorfunc);
-MaxDensityInterval GetMDI(TH1 *hp, double probFrac);
-void AssignProposal(const TGraphAsymmErrors *box, const TVectorD &currentvec,
-                    TVectorD &newvec);
-bool AcceptProposal(double p0, double p1);
-void PrintPercentDone(int i, int N, int k);  // Print i/N (in %) every k%.
+TGraphAsymmErrors *
+SampleVolumeIdeal(TH1D *h);
+TGraphAsymmErrors *
+ReducedSampleVolume(TH1D **hmp, TGraphAsymmErrors *old,
+                    double flo, double fhi);
+TTree *
+SampleUniform(int nSamples, TVectorD &D, TMatrixD &Prt,
+              TGraphAsymmErrors *box);
+TTree *
+SampleMH(int nSamples, int nBurnIn, double stepSize, TGraphAsymmErrors *box,
+         LogLikeFn &llfunc, LogPrior &priorfunc);
+MaxDensityInterval
+GetMDI(TH1 *hp, double probFrac);
+void
+GaussianProposal(const TGraphAsymmErrors *box, const TVectorD &currentvec,
+                 TVectorD &newvec, double stepSize = 0.01);
+void
+CellProposal(const TGraphAsymmErrors *box, const TVectorD &currentvec,
+             TVectorD &newvec, double stepSize = 0.01);
+bool
+AcceptProposal(double p0, double p1);
 
 TGraphAsymmErrors *
 HyperBox(TH1D *h)
@@ -241,8 +253,6 @@ SampleUniform(int nSamples, TVectorD &D, TMatrixD &Prt, TGraphAsymmErrors *box)
   for (int i=0; i<nSamples; i++)
   {
 
-    PrintPercentDone(i, nSamples, 1);
-
     for (int t=0; t<Nt; t++)
     {
       double min = box->GetY()[t] - box->GetEYlow()[t];
@@ -265,9 +275,11 @@ SampleUniform(int nSamples, TVectorD &D, TMatrixD &Prt, TGraphAsymmErrors *box)
 }
 
 TTree *
-SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
+SampleMH(int nSamples, int nBurnIn, double stepSize, TGraphAsymmErrors *box,
          LogLikeFn &llfunc, LogPrior &priorfunc)
 {
+  std::deque<int> accepted; // Store bits to keep track of acceptance rate.
+  int acceptanceRate = 0;   // Number of acceptances in prev. 1000 samples.
   int Nt = box->GetN();
   float Tpoint[Nt], logL;
   TVectorD trialT = MatrixUtils::Graph2Vec(box);
@@ -287,8 +299,16 @@ SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
   std::cout << Form("Sampling L(D|T)*pi(T) using MCMC...") << std::endl;
   for (int i=0; i < nSamples + nBurnIn; i++)
   {
-    PrintPercentDone(i, nSamples + nBurnIn, 1);
-    AssignProposal(box, trialT, propT); // Get a new proposal point (propT).
+
+    if (i%(int)1e5==0)
+      std::cout << Form("  %d%%  %d/1000 accepted\r",
+                        int(i*100./(nSamples + nBurnIn)),
+                        acceptanceRate)
+                << std::flush;
+
+    // Get a new proposal point (propT).
+    CellProposal(box, trialT, propT, stepSize);
+//    GaussianProposal(box, trialT, propT, stepSize);
 
     // Compute log likelihood and log prior.
     // Note llfunc < 0, priorfunc > 0.
@@ -296,10 +316,11 @@ SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
     double lpf = priorfunc(propT);
     double p1  = llf - lpf;
 
-    // Printf("llf %.1f lpf %.1f", llf, lpf);
+  // Printf("llf %.1f lpf %.1f", llf, lpf);
 
     if (AcceptProposal(p0, p1))
     {
+      accepted.push_back(1);
       logL = p0 = p1;
       trialT = propT;
       for (int t=0; t<Nt; t++)
@@ -307,26 +328,62 @@ SampleMH(int nSamples, int nBurnIn, TGraphAsymmErrors *box,
       if (i >= nBurnIn)
         ptree->Fill();
     }
+    else
+      accepted.push_back(0);
+    if ((int)accepted.size() > 1000)
+      accepted.pop_front();
+
+    acceptanceRate = 0;
+    for (int j=0; j<(int)accepted.size(); j++)
+      acceptanceRate += accepted[j];
   }
 
   Printf("Filled tree with %lld entries.", ptree->GetEntries());
   return ptree;
 }
 
-
 void
-AssignProposal(const TGraphAsymmErrors *box, const TVectorD &currentvec,
-               TVectorD &newvec)
+GaussianProposal(const TGraphAsymmErrors *box, const TVectorD &currentvec,
+                 TVectorD &newvec, double stepSize)
 {
   static TRandom3 ran3;
+  int ntries = 0;
 
-  // Get a proposal point from a small box centered at the current
+  // Get a proposal point from a Gaussian centered at the current
   // point. Assign the point to newvec.
   for (int t=0; t<box->GetN(); t++)
   {
     double min = box->GetY()[t] - box->GetEYlow()[t];
     double max = box->GetY()[t] + box->GetEYhigh()[t];
-    double dT = 0.01*(max - min);
+    double dT = stepSize*(max - min);
+
+    newvec(t) = ran3.Gaus(currentvec(t), dT);
+
+    // Ensure the new points are within allowed bounds
+    while (newvec(t) < min || newvec(t) > max)
+    {
+      newvec(t) = ran3.Gaus(currentvec(t), dT);
+      ntries++;
+      assert(ntries < 10);
+    }
+  }
+
+return;
+}
+
+void
+CellProposal(const TGraphAsymmErrors *box, const TVectorD &currentvec,
+             TVectorD &newvec, double stepSize)
+{
+  static TRandom3 ran3;
+
+  // Get a proposal point from a small cell centered at the current
+  // point. Assign the point to newvec.
+  for (int t=0; t<box->GetN(); t++)
+  {
+    double min = box->GetY()[t] - box->GetEYlow()[t];
+    double max = box->GetY()[t] + box->GetEYhigh()[t];
+    double dT = stepSize*(max - min);
 
     // Make sure the proposal cell stays within the box, and that it
     // always has the same volume dT^Nt.
@@ -486,14 +543,11 @@ SampleVolume(TH1D *h,
   for (int t=0; t<Nt; t++)
   {
     double mid = h->GetBinContent(t+1);
-    double rms = TMath::Sqrt(mid);    
+    double rms = TMath::Sqrt(mid);
     double min = scaleLower * mid - nrmsLower * rms;
     double max = scaleUpper * mid + nrmsUpper * rms;
 
-    // double min = 0.1*mid - 10*rms;
-    // double max = 5.0*mid + 10*rms;
-
-    if (min < absMin) 
+    if (min < absMin)
       min = absMin;
 
     double ex = h->GetBinWidth(t+1)/2.04;
@@ -516,13 +570,8 @@ SampleVolumeIdeal(TH1D *h)
     double min = (mid < 1e4) ? 0.5 : 0.1*mid - t*TMath::Sqrt(mid);
     double max = 2*mid + 100*t*TMath::Sqrt(mid);
 
-    // min = 1./(t+10) * mid;
     if (min <= 0)
       min = 0.5;
-    // if (t==0)
-    //   max = 5*mid;
-    // else
-    //   max = (t)*mid;
 
     double ex = h->GetBinWidth(t+1)/2.04;
     g->SetPoint(t,h->GetBinCenter(t+1), mid);
@@ -553,13 +602,13 @@ ReducedSampleVolume(TH1D **hmp, TGraphAsymmErrors *old, double flo, double fhi)
   return g;
 }
 
-void
-PrintPercentDone(int i, int N, int k)
-{
-  // Print i/N (in %) every k%.
+// void
+// PrintPercentDone(int i, int N, int k, double watchMe)
+// {
+//   // Print i/N (in %) every k%.
 
-  int percent = i*100./N;
-  if (percent % k == 0)
-    std::cout << Form("  %d%%\r", percent) << std::flush;
-  return;
-}
+//   int percent = i*100./N;
+//   if (percent % k == 0)
+//     std::cout << Form("  %d%%  %f\r", percent, watchMe) << std::flush;
+//   return;
+// }
