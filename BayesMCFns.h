@@ -5,6 +5,9 @@
 //
 // Andrew Adare andrew.adare@colorado.edu
 
+#ifndef BayesMCFns_h
+#define BayesMCFns_h
+
 #include "TH1.h"
 #include "TH2.h"
 #include "TF1.h"
@@ -601,6 +604,7 @@ ReducedSampleVolume(TH1D **hmp, TGraphAsymmErrors *old, double flo, double fhi)
   }
   return g;
 }
+#endif // BayesMCFns_h
 
 // void
 // PrintPercentDone(int i, int N, int k, double watchMe)
