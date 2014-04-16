@@ -50,8 +50,7 @@ struct MaxDensityInterval
 struct McInput
 {
   // Create matrix/vector objects from hists for likelihood functor input.
-  // Providing b1,b2 creates a system in the subrange b1-b2.
-  // Adding b3,b4 creates a concatenation of the b1-b2 and b3-b4 subranges.
+  // Providing b1,b2 [,b3,b4] creates a system nonzero in the subrange(s).
   // b1-4 are histogram bins (1..N), not matrix/vector indices (0..N-1)
   McInput(const TH2D *hA, const TH1D *hb, TH1D *hBkg = 0, /*TH1D *hEff = 0*/
           const int b1 = -1, const int b2 = -1,
@@ -69,43 +68,60 @@ struct McInput
       Printf("       Second range: [%.2f, %.2f], matrix rows %d-%d",
              ax->GetBinLowEdge(row3+1), ax->GetBinUpEdge(row4+1), row3, row4);
 
-    // Notation:
     // A: Matrix filled by generative model with (arbitrary) integral N.
-    // M: Matrix of joint probabilities P(r,t). M = 1/N * A.
-    // M1 (and M2 if requested): Sub-matrices of M (selected rows, all columns)
-    // Pt: Vector of marginal probs P(t) = sum_r P(r,t).
-    // Prt: Matrix of conditional probs P(r|t) = M/(vector of M column sums)
-
-    // A
     TMatrixD A = MatrixUtils::Hist2Matrix(hA);
     double N = A.Sum();
+    int nrows = A.GetNrows();
     int ncols = A.GetNcols();
 
-    // M
+    // M: Matrix of joint probabilities P(r,t). M = 1/N * A.
     TMatrixD M(A);
     M *= 1./N;
 
-    // DELETE THIS LATER =====================================================
+    // Pt: Vector of marginal probs P(t) = sum_r P(r,t).
     TVectorD Pt = MatrixUtils::ColSum(M);
+
+    // Prt: Matrix of conditional probs P(r|t) = M/(vector of M column sums)
+    TMatrixD PrtFull = MatrixUtils::DivRowsByVector(M, Pt);  // P(r|t)
+
+    // Fill Prt
     Prt.ResizeTo(M);
-    Prt = MatrixUtils::DivRowsByVector(M, Pt);  // P(r|t)
-    if (b1>0 && b2>b1) // Create M1, if requested
+    Prt *= 0;
+    Prt.SetSub(row1, 0, PrtFull.GetSub(row1, row2, 0, ncols - 1));
+    if (b3>b2 && b4>b3)
+      Prt.SetSub(row3, 0, PrtFull.GetSub(row3, row4, 0, ncols - 1));
+
+    // Fill b
+    b.ResizeTo(nrows);
+    b *= 0;
+    TVectorD bfull = MatrixUtils::Hist2Vec(hb);
+    b.SetSub(row1, bfull.GetSub(row1, row2));
+    if (b3>b2 && b4>b3)
+      b.SetSub(row3, bfull.GetSub(row3, row4));
+
+    // Fill bkg, if provided.
+    bkg.ResizeTo(nrows);
+    bkg *= 0;
+    if (hBkg)
     {
-      TMatrixD M1 = Prt.GetSub(row1, row2, 0, ncols - 1);
-      if (b3>b2 && b4>b3) // Also M2, if requested
-      {
-        TMatrixD M2 = Prt.GetSub(row3, row4, 0, ncols - 1);
-        Prt.ResizeTo(M1.GetNrows() + M2.GetNrows(), ncols);
-        Prt.SetSub(0, 0, M1);
-        Prt.SetSub(M1.GetNrows(), 0, M2);
-      }
-      else
-      {
-        Prt.ResizeTo(M1);
-        Prt.SetSub(0, 0, M1);
-      }
+      TVectorD bkgfull = MatrixUtils::Hist2Vec(hBkg);
+      bkg.SetSub(row1, bkgfull.GetSub(row1, row2));
+      if (b3>b2 && b4>b3)
+        bkg.SetSub(row3, bkgfull.GetSub(row3, row4));
     }
-    // DELETE THIS LATER =====================================================
+
+
+    // TMatrixD M2 = Prt.GetSub(row3, row4, 0, ncols - 1);
+    // Prt.ResizeTo(M1.GetNrows() + M2.GetNrows(), ncols);
+    // Prt.SetSub(0, 0, M1);
+    // Prt.SetSub(M1.GetNrows(), 0, M2);
+
+    // else
+    // {
+    //   Prt.ResizeTo(M1);
+    //   Prt.SetSub(0, 0, M1);
+    // }
+
 
 
     // RESTORE THIS LATER =====================================================
@@ -141,32 +157,32 @@ struct McInput
     */
     // RESTORE THIS LATER =====================================================
 
-    TVectorD vb = MatrixUtils::Hist2Vec(hb);
-    TVectorD bsub1 = vb.GetSub(row1, row2);
-    b.ResizeTo(bsub1);
-    b = bsub1;
+    // TVectorD vb = MatrixUtils::Hist2Vec(hb);
+    // TVectorD bsub1 = vb.GetSub(row1, row2);
+    // b.ResizeTo(bsub1);
+    // b = bsub1;
 
-    if (b3>0 && b4>b3) // Expand b to include a second sub-range, if valid
-    {
-      TVectorD bsub2 = vb.GetSub(row3, row4);
-      b.ResizeTo(bsub1.GetNrows() + bsub2.GetNrows());
-      b.SetSub(bsub1.GetNrows(), bsub2);
-    }
+    // if (b3>0 && b4>b3) // Expand b to include a second sub-range, if valid
+    // {
+    //   TVectorD bsub2 = vb.GetSub(row3, row4);
+    //   b.ResizeTo(bsub1.GetNrows() + bsub2.GetNrows());
+    //   b.SetSub(bsub1.GetNrows(), bsub2);
+    // }
 
-    bkg.ResizeTo(b); // If !hBkg, this remains (0,0,0,...)'
-    if (hBkg)
-    {
-      TVectorD vbkg = MatrixUtils::Hist2Vec(hBkg);
-      TVectorD bkg1 = vbkg.GetSub(row1, row2);
-      bkg.ResizeTo(bkg1);
-      bkg = bkg1;
-      if (b3>0 && b4>b3) // Expand bkg to include a second sub-range, if valid
-      {
-        TVectorD bkg2 = vbkg.GetSub(row3, row4);
-        bkg.ResizeTo(bkg1.GetNrows() + bkg2.GetNrows());
-        bkg.SetSub(bkg1.GetNrows(), bkg2);
-      }
-    }
+    // bkg.ResizeTo(b); // If !hBkg, this remains (0,0,0,...)'
+    // if (hBkg)
+    // {
+    //   TVectorD vbkg = MatrixUtils::Hist2Vec(hBkg);
+    //   TVectorD bkg1 = vbkg.GetSub(row1, row2);
+    //   bkg.ResizeTo(bkg1);
+    //   bkg = bkg1;
+    //   if (b3>0 && b4>b3) // Expand bkg to include a second sub-range, if valid
+    //   {
+    //     TVectorD bkg2 = vbkg.GetSub(row3, row4);
+    //     bkg.ResizeTo(bkg1.GetNrows() + bkg2.GetNrows());
+    //     bkg.SetSub(bkg1.GetNrows(), bkg2);
+    //   }
+    // }
   }
 
   TMatrixD Prt;   // P(r|t)
@@ -311,7 +327,7 @@ SampleMH(int nSamples, int nBurnIn, double stepSize, TGraphAsymmErrors *box,
 
     // Get a new proposal point (propT).
     CellProposal(box, trialT, propT, stepSize);
-//    GaussianProposal(box, trialT, propT, stepSize);
+    //    GaussianProposal(box, trialT, propT, stepSize);
 
     // Compute log likelihood and log prior.
     // Note llfunc < 0, priorfunc > 0.
@@ -319,7 +335,7 @@ SampleMH(int nSamples, int nBurnIn, double stepSize, TGraphAsymmErrors *box,
     double lpf = priorfunc(propT);
     double p1  = llf - lpf;
 
-  // Printf("llf %.1f lpf %.1f", llf, lpf);
+    // Printf("llf %.1f lpf %.1f", llf, lpf);
 
     if (AcceptProposal(p0, p1))
     {
@@ -371,7 +387,7 @@ GaussianProposal(const TGraphAsymmErrors *box, const TVectorD &currentvec,
     }
   }
 
-return;
+  return;
 }
 
 void
