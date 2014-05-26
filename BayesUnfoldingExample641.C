@@ -1,8 +1,11 @@
 
 // Copy or symlink the following files to the current directory:
 // They are available at https://github.com/andrewadare/utils.git
-#include "MatrixUtils.C"
-#include "UtilFns.C"
+#include "MatrixUtils.h"
+#include "UtilFns.h"
+#include "BayesMCFns.h"
+#include "TStopwatch.h"
+#include "TestProblems.C"
 
 // Example 6.4.1 from "Fully Bayesian Unfolding" arXiv:1201.4612v4
 
@@ -21,12 +24,15 @@ double evtWeight = 1e-3;
 const int Nt = 14;
 const int Nr = 14;
 
+// Number of bins in marginal posterior distributions
 int nMcmcBins = 1000;
 int nFlatBins = 20;
 
 // Smearing parameters
 double apar = 0.5;
 double bpar = 0.1;
+
+double alpha = 0.0; // Regularization strength.
 
 TGraphErrors *DataPoint(TH1 *hD, TH1 *hp, int t, double y=-1);
 TGraphErrors *TruePoint(TH1 *hT, TH1 *hp, int t, double y=-1);
@@ -40,11 +46,11 @@ void BayesUnfoldingExample641()
   if (gSystem->Getenv("TMPDIR"))
     gSystem->SetBuildDir(gSystem->Getenv("TMPDIR"));
 
-  gROOT->LoadMacro("TestProblems.C+");
-  gROOT->LoadMacro("BayesMCFns.C+");
+  // gROOT->LoadMacro("TestProblems.C+");
+  //  gROOT->LoadMacro("BayesMCFns.C+");
 
   TRandom3 ran;
-  TStopwatch watch; // Watch starts at construction. Start() would reset it.
+  TStopwatch watch; // Watch starts here. A call to Start() would reset it.
 
   // Set up the problem
   double bins[Nt+1] = {0};
@@ -53,12 +59,12 @@ void BayesUnfoldingExample641()
 
   TestProblem testprob = AtlasDiJetMass(Nt, Nr, bins, bins,
                                         apar, bpar, nevts, evtWeight);
-  TH2D *hM   = testprob.Response ;
-  TH1D *hT   = testprob.xTruth   ;
+  TH2D *hM   = testprob.Response;
+  TH1D *hT   = testprob.xTruth;
   TH1D *hTmc = testprob.xTruthEst;
-  TH1D *hMt  = testprob.xIni     ;
-  TH1D *hD   = testprob.bNoisy   ;
-  TH1D *heff = testprob.eff      ;
+  TH1D *hMt  = testprob.xIni;
+  TH1D *hD   = testprob.bNoisy;
+  TH1D *heff = testprob.eff;
   SetHistProps(hT,kRed+2,kNone,kRed+2);
   SetHistProps(hTmc,kRed,kNone,kRed);
   SetHistProps(hD,kBlack,kNone,kBlack,kFullCircle,1.5);
@@ -75,9 +81,20 @@ void BayesUnfoldingExample641()
   TGraphAsymmErrors *box = HyperBox(hTmc);
   SetGraphProps(box, kGreen+2, kNone, kSpring, kFullSquare, 1.0);
 
-  double alpha = 0.; // No regularization.
-  TTree *tmcmc = SampleMH(nMcmcSamples, nMcmcSamples/5,
-                          D, Prt, box, alpha, Tmc);
+  // Likelihood functor
+  LogPoissonLikeFn llfunc(Prt, D);
+
+  // Curvature regularization.
+  // Note that this is not directly penalizing curvature of the solution.
+  // Instead it smooths the solution divided by the trial spectrum.
+  std::vector<double> regpars;
+  regpars.push_back(alpha);  // Regularization strength
+  for (int i=0; i<box->GetN(); i++)
+    regpars.push_back(box->GetY()[i]);
+
+  CurvatureRegFn regfunc(regpars);
+
+  TTree *tmcmc = SampleMH(nMcmcSamples, 1e4, 0.01, box, llfunc, regfunc);
 
   // Create marginal prob. distributions from MCMC
   std::cout << Form("Marginalizing parameters from Markov chain...")
