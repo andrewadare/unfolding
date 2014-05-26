@@ -22,7 +22,7 @@
 #include <TString.h>
 #include <iostream>
 
-#include "MatrixUtils.C"
+#include "MatrixUtils.h"
 
 struct TestProblem       // Output from test problem generator.
 {
