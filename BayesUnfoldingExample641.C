@@ -3,6 +3,7 @@
 // They are available at https://github.com/andrewadare/utils.git
 #include "MatrixUtils.h"
 #include "UtilFns.h"
+
 #include "BayesMCFns.h"
 #include "TStopwatch.h"
 #include "TestProblems.C"
@@ -11,6 +12,7 @@
 
 bool doUniformSampling = false;
 bool drawReducedVolume = true;
+bool printPDFs = true;
 
 // Number of MC likelihood samples
 int nMcmcSamples = 1e6;
@@ -28,29 +30,45 @@ const int Nr = 14;
 int nMcmcBins = 1000;
 int nFlatBins = 20;
 
-// Smearing parameters
+// Smearing parameters for test problem
 double apar = 0.5;
 double bpar = 0.1;
 
-double alpha = 0.0; // Regularization strength.
+// Regularization strength. 
+// Try ~1-2 to reduce posterior variance & increase bin-to-bin smoothness.
+double alpha = 0.0;
 
 TGraphErrors *DataPoint(TH1 *hD, TH1 *hp, int t, double y=-1);
 TGraphErrors *TruePoint(TH1 *hT, TH1 *hp, int t, double y=-1);
+TGraphErrors *MD68Point(TH1 *hp, double y = -1);
+
 TGraphAsymmErrors *ReducedSamplingVolume(TH1D **hmp, TGraphAsymmErrors *old);
 
 void BayesUnfoldingExample641()
 {
+
+#ifdef __CINT__ // Avoid CINT badness
+  Printf("Please compile this script (root BayesUnfoldingExample641.C+)");
+  gSystem->Exec("rm AutoDict*");
+  gSystem->Exit(0);
+#endif
+
+  if (!gROOT->IsBatch())
+  {
+    Printf("Several canvases coming...adding -b flag.");
+    gROOT->SetBatch();
+  }
+
   gStyle->SetOptStat(0);
   gStyle->SetPaintTextFormat(".2f");
 
   if (gSystem->Getenv("TMPDIR"))
     gSystem->SetBuildDir(gSystem->Getenv("TMPDIR"));
 
-  // gROOT->LoadMacro("TestProblems.C+");
-  //  gROOT->LoadMacro("BayesMCFns.C+");
-
   TRandom3 ran;
   TStopwatch watch; // Watch starts here. A call to Start() would reset it.
+
+  TObjArray *cList = new TObjArray(); // List of drawn canvases --> PDF file
 
   // Set up the problem
   double bins[Nt+1] = {0};
@@ -113,8 +131,9 @@ void BayesUnfoldingExample641()
     // Marginalize with unit weight when using MCMC, weight by
     // likelihood if sampling was uniform.
     tmcmc->Draw(Form("T%d >> hMCMC%d",t,t), "", "goff");
-    hMCMC[t]->Scale(1./hMCMC[t]->Integral(1,nMcmcBins));
+    hMCMC[t]->Scale(1./hMCMC[t]->Integral(1, nMcmcBins));
     SetHistProps(hMCMC[t], kBlack, kYellow, kBlack, kFullCircle, 1.0);
+    hMCMC[t]->GetYaxis()->SetTitleOffset(1.5);
   }
   Printf("Done marginalizing MCMC.");
 
@@ -171,34 +190,36 @@ void BayesUnfoldingExample641()
     }
   }
 
-
   Printf("Drawing results...");
-  DrawObject(hM,"colz");  gPad->SetLogx();  gPad->SetLogy();  gPad->SetLogz();
-  DrawObject(heff,"");
+  DrawObject(hM, "colz", "matrix", cList, 550, 500);
+  gPad->SetLogx();  gPad->SetLogy();  gPad->SetLogz();
+  gPad->SetRightMargin(0.15);
+
+  DrawObject(heff, "", "efficiency", cList);
 
   // Draw marginal dists. from MCMC
   for (int t=0; t<Nt; t++)
   {
-
-    hMCMC[t]->Scale(1./hMCMC[t]->Integral(1,nMcmcBins,"width"));
-    DrawObject(hMCMC[t], "", Form("post_%d", t), 0);
+    DrawObject(hMCMC[t], "", Form("post_%d", t), cList);
+    gPad->SetLeftMargin(0.15);
 
     if (doUniformSampling)
     {
-      hFlat[t]->Scale(1./hFlat[t]->Integral(1,nFlatBins,"width"));
+      hFlat[t]->Scale(1./hFlat[t]->Integral(1, nFlatBins,"width"));
       hFlat[t]->Draw("same");
     }
 
-    TGraphErrors *dataPoint = DataPoint(hD, hMCMC[t], t);
-    TGraphErrors *truePoint = TruePoint(hT, hMCMC[t], t);
-    dataPoint->Draw("ep same");
-    truePoint->Draw("p same");
+    double ymin = hMCMC[t]->GetMinimum();
+    double ymax = hMCMC[t]->GetMaximum();
+    double yDraw = 0.25*(ymax-ymin);
+    DataPoint(hD, hMCMC[t], t, 0.75*yDraw)->Draw("ep same");
+    TruePoint(hT, hMCMC[t], t, yDraw)->Draw("p same");
+    MD68Point(hMCMC[t], yDraw)->Draw("ep same");
   }
-
 
   // Result!
   hT->GetYaxis()->SetRangeUser(0.002, 101*nevts*evtWeight);
-  DrawObject(hT,"ep");
+  DrawObject(hT, "ep", "result", cList);
   gPad->SetLogy();
   box->Draw("e5 same");
   if (doUniformSampling || drawReducedVolume)
@@ -209,9 +230,16 @@ void BayesUnfoldingExample641()
   if (unf2)
     unf2->Draw("ep same");
 
+  if (printPDFs)
+  {
+    PrintPDFs(cList, "pdfs"); // Print individuals into ./pdfs dir
+    PrintPDF(cList, "pdfs/mcmc_unfold_example"); // Multipage PDF
+  }
+
   Printf("All done.");
   watch.Stop();
   watch.Print();
+
   return;
 }
 
@@ -237,7 +265,7 @@ TGraphErrors *DataPoint(TH1 *hD, TH1 *hp, int t, double y)
 {
   double ymin = hp->GetMinimum();
   double ymax = hp->GetMaximum();
-  double yDrawData = y>0? y : ymin + 0.1*(ymax-ymin);
+  double yDrawData = y>0? y : ymin + 0.2*(ymax-ymin);
   TGraphErrors *dataPoint = new TGraphErrors();
   dataPoint->SetPoint(0, hD->GetBinContent(t+1), yDrawData);
   dataPoint->SetPointError(0, hD->GetBinError(t+1), 0.0);
@@ -249,9 +277,22 @@ TGraphErrors *TruePoint(TH1 *hT, TH1 *hp, int t, double y)
 {
   double ymin = hp->GetMinimum();
   double ymax = hp->GetMaximum();
-  double yDrawData = y>0? y : ymin + 0.1*(ymax-ymin);
+  double yDrawData = y>0? y : ymin + 0.2*(ymax-ymin);
   TGraphErrors *truePoint = new TGraphErrors();
   truePoint->SetPoint(0, hT->GetBinContent(t+1), yDrawData);
   SetGraphProps(truePoint, kRed+2, kGray, kRed+2, kOpenCircle, 1.5);
   return truePoint;
+}
+
+TGraphErrors *MD68Point(TH1 *hp, double y)
+{
+  double ymin = hp->GetMinimum();
+  double ymax = hp->GetMaximum();
+  double yDraw = y>0? y : ymin + 0.25*(ymax-ymin);
+  TGraphErrors *g = new TGraphErrors();
+  MaxDensityInterval mdi = GetMDI(hp, 0.68);
+  g->SetPoint(0, mdi.u, yDraw);
+  g->SetPointError(0, mdi.du, 0);
+  SetGraphProps(g, kAzure, kAzure, kAzure, kOpenSquare, 1.5);
+  return g;
 }
