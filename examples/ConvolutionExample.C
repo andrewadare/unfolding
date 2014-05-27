@@ -4,9 +4,9 @@
 #include "TestProblems.h"
 #include "TLegend.h"
 
-bool printPDFs = true; // Print canvases to pdf
-int m = 100, n = 25;
-double x1 = 0., x2 = 5.;
+bool printPDFs = true;   // Print canvases to pdf
+int m = 100, n = 25;     // Number of measured and true bins
+double x1 = 0., x2 = 5.; // Range of solution
 
 // Response matrix, truth model, truth model estimator, and data.
 TH2D *hResp=0;
