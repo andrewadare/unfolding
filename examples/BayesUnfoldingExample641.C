@@ -48,8 +48,8 @@ void BayesUnfoldingExample641()
 {
 
 #ifdef __CINT__ // Avoid CINT badness
-  Printf("Please compile this script (root BayesUnfoldingExample641.C+)");
-  gSystem->Exec("rm AutoDict*");
+  Printf("Please compile this script (root BayesUnfoldingExample641.C+) "
+         "or use ROOT 6.");
   gSystem->Exit(0);
 #endif
 
