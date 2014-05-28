@@ -54,7 +54,7 @@ void ConvolutionExample()
 
   // SVD analysis ----------------------------------------------------
   // -----------------------------------------------------------------
-  SVDResult svd = uu.SVDAnalysis();
+  SVDResult *svd = uu.SVDAnalysis();
 
   // Draw s.v. coefficients |u_i'*b|
   cList->Add(uu.DrawSVDPlot(svd, 0.2, 1e9));
@@ -80,25 +80,25 @@ void ConvolutionExample()
   for (int k=0; k<nLambda; k++)
     regVector(k) = 0.01*(k+1);
 
-  UnfoldingResult rg = uu.UnfoldTikhonovGSVD(gsvd, regVector);
+  UnfoldingResult *rg = uu.UnfoldTikhonovGSVD(gsvd, regVector);
   Info("", "Finished GSVD analysis.");
 
-  DrawObject(rg.XRegHist, "surf"/*"SPEC dm(0,2)"*/, "conv_gsvd_x", cList);
+  DrawObject(rg->XRegHist, "surf"/*"SPEC dm(0,2)"*/, "conv_gsvd_x", cList);
 
-  DrawObject(rg.GcvCurve, "alp", "conv_gsvd_gcv", cList);
-  SetGraphProps(rg.GcvCurve,kMagenta+2,kNone,kMagenta+2,kFullCircle,0.5);
+  DrawObject(rg->GcvCurve, "alp", "conv_gsvd_gcv", cList);
+  SetGraphProps(rg->GcvCurve,kMagenta+2,kNone,kMagenta+2,kFullCircle,0.5);
   lt.DrawLatex(0.2, 0.8, Form("#lambda_{min} = %g at k = %d",
-                              rg.lambdaGcv, rg.kGcv));
+                              rg->lambdaGcv, rg->kGcv));
   TGraph *ggcv = new TGraph(1);
-  ggcv->SetPoint(0,rg.lambdaGcv,rg.GcvCurve->GetY()[rg.kGcv]);
+  ggcv->SetPoint(0,rg->lambdaGcv,rg->GcvCurve->GetY()[rg->kGcv]);
   SetGraphProps(ggcv,kRed,kNone,kRed,kOpenCircle,2);
   ggcv->SetLineWidth(2);
   ggcv->Draw("psame");
 
-  DrawObject(rg.LCurve, "alp", "conv_gsvd_lcurve", cList);
-  SetGraphProps(rg.LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
+  DrawObject(rg->LCurve, "alp", "conv_gsvd_lcurve", cList);
+  SetGraphProps(rg->LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
   TGraph *ggl = new TGraph(1);
-  ggl->SetPoint(0,rg.LCurve->GetX()[rg.kGcv],rg.LCurve->GetY()[rg.kGcv]);
+  ggl->SetPoint(0,rg->LCurve->GetX()[rg->kGcv],rg->LCurve->GetY()[rg->kGcv]);
   SetGraphProps(ggl,kRed,kNone,kRed,kOpenCircle,2);
   ggl->SetLineWidth(2);
   ggl->Draw("psame");
@@ -106,10 +106,10 @@ void ConvolutionExample()
   // Richardson-Lucy algorithm ---------------------------------------
   // -----------------------------------------------------------------
   int nIterRL = 200;
-  UnfoldingResult rl = uu.UnfoldRichardsonLucy(nIterRL);
-  DrawObject(rl.XRegHist,"surf");
-  DrawObject(rl.LCurve, "alp", "conv_richlucy_lcurve", cList);
-  hRL = rl.XRegHist->ProjectionX(Form("rl%d",nIterRL),nIterRL,nIterRL);
+  UnfoldingResult *rl = uu.UnfoldRichardsonLucy(nIterRL);
+  DrawObject(rl->XRegHist,"surf");
+  DrawObject(rl->LCurve, "alp", "conv_richlucy_lcurve", cList);
+  hRL = rl->XRegHist->ProjectionX(Form("rl%d",nIterRL),nIterRL,nIterRL);
   hRL->Scale(1./hRL->GetBinWidth(1));
 
   // Chi squared minimization ----------------------------------------
@@ -119,18 +119,12 @@ void ConvolutionExample()
   for (int k=0; k<nl; k++)
     regWts(k) = (k+1)*1e-5;
   uu.SetRegType(UnfoldingUtils::kTotCurv);
-  UnfoldingResult cs = uu.UnfoldChiSqMin(regWts);
-  DrawObject(cs.XRegHist,"surf");
-  hCh2 = cs.XRegHist->ProjectionX(Form("cs%d",30),30,30);
+  UnfoldingResult *cs = uu.UnfoldChiSqMin(regWts);
+  DrawObject(cs->XRegHist,"surf");
+  hCh2 = cs->XRegHist->ProjectionX(Form("cs%d",30),30,30);
   hCh2->Scale(1./hCh2->GetBinWidth(1));
-  DrawObject(cs.LCurve,"alp");
-  SetGraphProps(cs.LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
-
-  // SVD algorithm ---------------------------------------------------
-  // -----------------------------------------------------------------
-  // double lambda = 0.01;
-  // TObjArray* svdHists = new TObjArray();
-  // hSVD = uu.UnfoldSVD(lambda, svdHists, "BCR~");
+  DrawObject(cs->LCurve,"alp");
+  SetGraphProps(cs->LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
 
   // -----------------------------------------------------------------
   // Draw
@@ -146,7 +140,7 @@ void ConvolutionExample()
   SetHistProps(hTrueData, kBlack, kNone, kBlack, kFullCircle, 0.8);
   hTrue->SetLineWidth(2);
   //  SetHistProps(hSVD, kGreen+2, kNone, kGreen+2, kOpenCircle, 1.0);
-  SetHistProps(rg.hGcv, kGreen+2, kNone, kGreen+2, kFullSquare, 1.2);
+  SetHistProps(rg->hGcv, kGreen+2, kNone, kGreen+2, kFullSquare, 1.2);
   // SetHistProps(hCG, kRed, kNone, kRed, kOpenCircle, 1.5);
   SetHistProps(hCh2, kMagenta+2, kNone, kMagenta+2, kFullCircle, 1.0);
   SetHistProps(hRL, kRed+2, kNone, kRed+2, kOpenCircle, 1.2);
@@ -173,15 +167,15 @@ void ConvolutionExample()
   DrawObject(hTrue, "l", "conv_problem", cList, 700, 500);
   hTrue->GetYaxis()->SetRangeUser(0., 1.2*hTrue->GetMaximum());
   hMeas->Draw("epsame");
-  rg.hGcv->Scale(1./rg.hGcv->GetBinWidth(1));
-  rg.hGcv->Draw("psame");
+  rg->hGcv->Scale(1./rg->hGcv->GetBinWidth(1));
+  rg->hGcv->Draw("psame");
   hRL->Draw("epsame");
   hCh2->Draw("epsame");
   TLegend *l1 = new TLegend(0.5, 0.6, 0.99, 0.99);
   l1->SetFillColor(kNone);
   l1->AddEntry(hTrue, "Data input model", "l");
   l1->AddEntry(hMeas, "Measurement", "epl");
-  l1->AddEntry(rg.hGcv, "Tikhonov GSVD", "epl");
+  l1->AddEntry(rg->hGcv, "Tikhonov GSVD", "epl");
   l1->AddEntry(hRL, Form("Richardson-Lucy alg."), "epl");
   l1->AddEntry(hCh2, Form("#chi^{2} minimization method"), "epl");
   l1->Draw();
@@ -190,7 +184,7 @@ void ConvolutionExample()
   TH1D *hu[999];
   for (int i=0; i<n; i++)
   {
-    hu[i] = svd.U->ProjectionX(Form("u_%d",i),i+1,i+1);
+    hu[i] = svd->U->ProjectionX(Form("u_%d",i),i+1,i+1);
     hu[i]->SetLineWidth(2);
     hu[i]->SetTitle(Form("Left singular vector u_{%d};Column index",i));
   }
@@ -211,7 +205,7 @@ void ConvolutionExample()
   hu[0]->Draw("plsame");
 
   // Draw the s.v. spectrum
-  DrawObject(svd.sigma, "p", "conv_sigma", cList, 500, 500);
+  DrawObject(svd->sigma, "p", "conv_sigma", cList, 500, 500);
   gPad->SetLogy();
 
   if (printPDFs)

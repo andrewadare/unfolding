@@ -107,29 +107,28 @@ void RUExample()
   TVectorD regVector(nLambda);  regVector(0) = 0.;
   for (int k=1; k<nLambda; k++)
     regVector(k) = 0.005*TMath::Exp(0.15*k);
-  //    regVector(k) = 4*k+0.5;
 
-  UnfoldingResult rg = uu.UnfoldTikhonovGSVD(gsvd, regVector);
-  rg.WRegHist->Scale(double(nx)/(xt2-xt1));
-  rg.XRegHist->Scale(double(nx)/(xt2-xt1));
-  DrawObject(rg.WRegHist, "surf", "ru_gsvd_wreg2d", cList);
+  UnfoldingResult *rg = uu.UnfoldTikhonovGSVD(gsvd, regVector);
+  rg->WRegHist->Scale(double(nx)/(xt2-xt1));
+  rg->XRegHist->Scale(double(nx)/(xt2-xt1));
+  DrawObject(rg->WRegHist, "surf", "ru_gsvd_wreg2d", cList);
   gPad->SetLogy();
-  DrawObject(rg.XRegHist, "surf", "ru_gsvd_xreg2d", cList);
+  DrawObject(rg->XRegHist, "surf", "ru_gsvd_xreg2d", cList);
   gPad->SetLogy();
-  DrawObject(rg.GcvCurve, "alp",  "ru_gsvd_gcv", cList);
+  DrawObject(rg->GcvCurve, "alp",  "ru_gsvd_gcv", cList);
   gPad->SetLogx();
-  SetGraphProps(rg.GcvCurve,kMagenta+2,kNone,kMagenta+2,kFullCircle,0.5);
+  SetGraphProps(rg->GcvCurve,kMagenta+2,kNone,kMagenta+2,kFullCircle,0.5);
   lt.DrawLatex(0.2, 0.8, Form("#lambda_{min} = %g at k = %d",
-                              rg.lambdaGcv, rg.kGcv));
+                              rg->lambdaGcv, rg->kGcv));
   TGraph *ggcv = new TGraph(1);
-  ggcv->SetPoint(0,rg.lambdaGcv,rg.GcvCurve->GetY()[rg.kGcv]);
+  ggcv->SetPoint(0,rg->lambdaGcv,rg->GcvCurve->GetY()[rg->kGcv]);
   SetGraphProps(ggcv,kRed,kNone,kRed,kOpenCircle,2);
   ggcv->SetLineWidth(2);
   ggcv->Draw("psame");
 
-  DrawObject(rg.LCurve, "alp", "ru_gsvd_lcurve", cList);
+  DrawObject(rg->LCurve, "alp", "ru_gsvd_lcurve", cList);
   gPad->SetLogx(); gPad->SetLogy();
-  SetGraphProps(rg.LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
+  SetGraphProps(rg->LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
 
   // Chi squared minimization ----------------------------------------
   // -----------------------------------------------------------------
@@ -137,32 +136,32 @@ void RUExample()
   for (int k=1; k<20; k++)
     regWts(k) = 1e-9*TMath::Exp(0.5*k); //TMath::Power(2,k)*1e-8;
   uu.SetRegType(UnfoldingUtils::kTotCurv);
-  UnfoldingResult cs = uu.UnfoldChiSqMin(regWts);
-  cs.XRegHist->Scale(double(nx)/(xt2-xt1));
-  DrawObject(cs.XRegHist,"surf", "ru_cs_xreg2d"); gPad->SetLogy();
-  DrawObject(cs.LCurve,"alp", "ru_cs_lcurve");
-  SetGraphProps(cs.LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
-  hCh2 = cs.XRegHist->ProjectionX(Form("cs%d",10),10,10);
+  UnfoldingResult *cs = uu.UnfoldChiSqMin(regWts);
+  cs->XRegHist->Scale(double(nx)/(xt2-xt1));
+  DrawObject(cs->XRegHist,"surf", "ru_cs_xreg2d"); gPad->SetLogy();
+  DrawObject(cs->LCurve,"alp", "ru_cs_lcurve");
+  SetGraphProps(cs->LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
+  hCh2 = cs->XRegHist->ProjectionX(Form("cs%d",10),10,10);
 
   // PCGLS algorithm -------------------------------------------------
   // -----------------------------------------------------------------
   int nCG = 20;
-  UnfoldingResult cg = uu.UnfoldPCGLS(nCG, L,"~");
-  cg.WRegHist->Scale(double(nx)/(xt2-xt1));
-  cg.XRegHist->Scale(double(nx)/(xt2-xt1));
-  DrawObject(cg.XRegHist,"surf", "ru_cg_xreg2d");
-  DrawObject(cg.LCurve,"alp", "ru_cg_lcurve");
-  SetGraphProps(cg.LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
-  hCG = cg.XRegHist->ProjectionX(Form("cg%d",5),5,5);
+  UnfoldingResult *cg = uu.UnfoldPCGLS(nCG, L,"~");
+  cg->WRegHist->Scale(double(nx)/(xt2-xt1));
+  cg->XRegHist->Scale(double(nx)/(xt2-xt1));
+  DrawObject(cg->XRegHist,"surf", "ru_cg_xreg2d");
+  DrawObject(cg->LCurve,"alp", "ru_cg_lcurve");
+  SetGraphProps(cg->LCurve,kBlue,kNone,kBlue,kFullCircle,0.5);
+  hCG = cg->XRegHist->ProjectionX(Form("cg%d",5),5,5);
 
   // Richardson-Lucy algorithm ---------------------------------------
   // -----------------------------------------------------------------
   int nIterRL = 10;
   //  TH1D* hX0 = data->Clone("hX0"); // use measurement as prior
   //  hX0->Smooth(5);
-  UnfoldingResult rl = uu.UnfoldRichardsonLucy(nIterRL);
-  rl.XRegHist->Scale(double(nx)/(xt2-xt1));
-  hRL = rl.XRegHist->ProjectionX(Form("rl%d",nIterRL),nIterRL,nIterRL);
+  UnfoldingResult *rl = uu.UnfoldRichardsonLucy(nIterRL);
+  rl->XRegHist->Scale(double(nx)/(xt2-xt1));
+  hRL = rl->XRegHist->ProjectionX(Form("rl%d",nIterRL),nIterRL,nIterRL);
 
   // -----------------------------------------------------------------
   // Draw
@@ -170,7 +169,7 @@ void RUExample()
   SetHistProps(datatrue, kBlack, kNone, kBlack, kFullCircle, 1.0);
   SetHistProps(data, kBlue, kNone, kBlue, kOpenSquare, 1.0);
   //  SetHistProps(hSVD, kGreen, kNone, kGreen, kOpenCircle, 1.0);
-  SetHistProps(rg.hGcv, kGreen+2, kNone, kGreen+2, kOpenCircle, 1.0);
+  SetHistProps(rg->hGcv, kGreen+2, kNone, kGreen+2, kOpenCircle, 1.0);
   SetHistProps(hCG, kRed, kNone, kRed, kOpenCircle, 1.5);
   SetHistProps(hCh2, kMagenta+2, kNone, kMagenta+2, kFullCircle, 1.0);
   SetHistProps(hRL, kRed+2, kNone, kRed+2, kOpenCircle, 1.2);
@@ -180,7 +179,7 @@ void RUExample()
   data->Scale(1./data->GetBinWidth(1));
   bini->Scale(1./bini->GetBinWidth(1));
   xini->Scale(1./xini->GetBinWidth(1));
-  rg.hGcv->Scale(1./rg.hGcv->GetBinWidth(1));
+  rg->hGcv->Scale(1./rg->hGcv->GetBinWidth(1));
 
   // MC and data histos
   DrawObject(hxeff, "", "ru_eff", cList);
@@ -213,14 +212,14 @@ void RUExample()
     DrawObject(hUcov, "colz", "ru_mc_xcov");
     // hXcov->Add(hUcov); // Add independent contributions
     for (int j=1; j<=uu.GetN(); j++)
-      rg.hGcv->SetBinError(j, TMath::Sqrt(hUcov->GetBinContent(j,j)));
+      rg->hGcv->SetBinError(j, TMath::Sqrt(hUcov->GetBinContent(j,j)));
   }
 
   // Unfolding results
   DrawObject(datatrue, "ep", "ru_results", cList);
   data->Draw("epsame");
   //  hSVD->Draw("epsame");
-  rg.hGcv->Draw("epsame");
+  rg->hGcv->Draw("epsame");
   hCh2->Draw("epsame");
   hCG->Draw("epsame");
   hRL->Draw("epsame");
@@ -229,9 +228,9 @@ void RUExample()
   statObjs->Add(datatrue);
   statObjs->Add(data);
 
-  TGraphTime *aRL = Animation(rl.XRegHist, statObjs, "ep", 100, kRed+2, kFullCircle,1.,
+  TGraphTime *aRL = Animation(rl->XRegHist, statObjs, "ep", 100, kRed+2, kFullCircle,1.,
                               -10.,0,10,5000);
-  TGraphTime *aCG = Animation(cg.XRegHist, statObjs, "ep", 100, kRed, kFullCircle,1.,
+  TGraphTime *aCG = Animation(cg->XRegHist, statObjs, "ep", 100, kRed, kFullCircle,1.,
                               -10.,0,10,5000);
 
   if (1)
