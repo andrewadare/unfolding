@@ -1,13 +1,13 @@
 # Unfolding
 
-## Libraries and example macros to solve unfolding problems using ROOT
+### Libraries and example macros to solve unfolding problems using ROOT
 
 This package provides many tools for tackling discrete linear inverse problems, including
 
 - Singular value decomposition and Generalized SVD
 - Preconditioned conjugate gradients for least squares (P-CGLS)
 - Richardson-Lucy iterative solver
-- $\chi^2$ minimizer using TMinuit2 package (requires ROOT to be built with ```--enable-minuit2```)
+- \chi^2 minimizer using TMinuit2 package (requires ROOT to be built with ```--enable-minuit2```)
 - "Fully Bayesian" method using Markov Chain Monte Carlo. (Metropolis random walk sampler).
 
 Significant attention has been devoted to visualization. The examples produce spectral decomposition plots, step-wise animations for the iterative solvers, and surface plots demonstrating evolution the solutions with regularization strength.
