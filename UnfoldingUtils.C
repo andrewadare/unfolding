@@ -322,7 +322,7 @@ UnfoldingUtils::GetbErrRMS()
 }
 
 
-SVDResult
+SVDResult *
 UnfoldingUtils::SVDAnalysis(TH2 *hA, TH1 *hb, TString opt)
 {
   // Decompose A as U*Sigma*V' and study the components. If A is m x
@@ -331,7 +331,7 @@ UnfoldingUtils::SVDAnalysis(TH2 *hA, TH1 *hb, TString opt)
   // a column-orthonormal n x n matrix (V'*V = 1).
 
   static int id = 0; id++;
-  SVDResult result;
+  SVDResult *result = new SVDResult();
 
   fTilde = (opt.Contains("~")) ? true : false;
 
@@ -374,18 +374,18 @@ UnfoldingUtils::SVDAnalysis(TH2 *hA, TH1 *hb, TString opt)
     utb(i) = TMath::Abs(utb(i));
   TVectorD svc = ElemDiv(utb, sig); // SVD coefficients (abs. value)
 
-  result.sigma = Vec2Hist(sig, 0., ns, Form("sig%d",id),
-                          "#sigma_{i} ");
-  result.UTb   = Vec2Hist(utb, 0., ns, Form("utb%d",id),
-                          "#||{u^{T}_{i}#upointb} ");
-  result.coeff = Vec2Hist(svc, 0., ns, Form("svc%d",id),
-                          "#||{u^{T}_{i}#upointb} / #sigma_{i} ");
-  result.U     = Matrix2Hist(U, Form("U_svd_%d",id),
-                             0, ns, 0, ns);
+  result->sigma = Vec2Hist(sig, 0., ns, Form("sig%d",id),
+                           "#sigma_{i} ");
+  result->UTb   = Vec2Hist(utb, 0., ns, Form("utb%d",id),
+                           "#||{u^{T}_{i}#upointb} ");
+  result->coeff = Vec2Hist(svc, 0., ns, Form("svc%d",id),
+                           "#||{u^{T}_{i}#upointb} / #sigma_{i} ");
+  result->U     = Matrix2Hist(U, Form("U_svd_%d",id),
+                              0, ns, 0, ns);
 
-  SetTH1Props(result.sigma, kBlack, 0, kBlack, kFullCircle, 1.0);
-  SetTH1Props(result.UTb,   kBlue, 0, kBlue, kFullSquare, 1.0);
-  SetTH1Props(result.coeff, kRed, 0, kRed, kOpenSquare, 1.0);
+  SetTH1Props(result->sigma, kBlack, 0, kBlack, kFullCircle, 1.0);
+  SetTH1Props(result->UTb,   kBlue, 0, kBlue, kFullSquare, 1.0);
+  SetTH1Props(result->coeff, kRed, 0, kRed, kOpenSquare, 1.0);
 
   return result;
 }
@@ -582,14 +582,14 @@ UnfoldingUtils::GSVDAnalysis(TMatrixD &L, double lambda, TH2 *hA, TH1 *hb,
 }
 
 TCanvas *
-UnfoldingUtils::DrawSVDPlot(SVDResult svdhists, double ymin, double ymax,
+UnfoldingUtils::DrawSVDPlot(SVDResult *svdhists, double ymin, double ymax,
                             TString opt)
 {
   static int i=0; i++;
   TCanvas *c = new TCanvas(Form("csvd%d",i), Form("csvd%d",i), 1);
 
   // Draw frame histogram to set limits, title, etc.
-  int nx = svdhists.sigma->GetNbinsX();
+  int nx = svdhists->sigma->GetNbinsX();
   TH1F *hsvd = new TH1F(Form("hsvd%d",i), "SV Components;column index i;",
                         200, 0, nx);
   hsvd->Draw();
@@ -597,18 +597,18 @@ UnfoldingUtils::DrawSVDPlot(SVDResult svdhists, double ymin, double ymax,
 
   // Singular value spectrum
   if (opt.Contains("sig"))
-    svdhists.sigma->Draw("plsame");
+    svdhists->sigma->Draw("plsame");
 
   // Draw |U'*b| and |U'*b|/sigma
-  svdhists.UTb->Draw("plsame");
-  svdhists.coeff->Draw("plsame");
+  svdhists->UTb->Draw("plsame");
+  svdhists->coeff->Draw("plsame");
   gPad->SetLogy();
 
   TLegend *leg = new TLegend(0.75, 0.75, 0.99, 0.99);
   if (opt.Contains("sig"))
-    leg->AddEntry(svdhists.sigma, svdhists.sigma->GetTitle(), "p");
-  leg->AddEntry(svdhists.UTb, svdhists.UTb->GetTitle(), "ep");
-  leg->AddEntry(svdhists.coeff, svdhists.coeff->GetTitle(), "ep");
+    leg->AddEntry(svdhists->sigma, svdhists->sigma->GetTitle(), "p");
+  leg->AddEntry(svdhists->UTb, svdhists->UTb->GetTitle(), "ep");
+  leg->AddEntry(svdhists->coeff, svdhists->coeff->GetTitle(), "ep");
   leg->SetFillColor(kNone);
   leg->Draw();
 
@@ -719,7 +719,7 @@ UnfoldingUtils::RegChi2(const double *pars)
   return chi2;
 }
 
-UnfoldingResult
+UnfoldingResult *
 UnfoldingUtils::UnfoldChiSqMin(TVectorD &regWts, TString opt)
 {
   // Unfold by minimizing return values of RegChi2().
@@ -728,7 +728,7 @@ UnfoldingUtils::UnfoldChiSqMin(TVectorD &regWts, TString opt)
   static int id=0; id++;
   int nRegWts = regWts.GetNrows();
   int nPars = fN;
-  UnfoldingResult result;
+  UnfoldingResult *result = new UnfoldingResult();
 
   Info("UnfoldingUtils::UnfoldChiSqMin()",
        "Using reg type %d, weight %g. Option: %s",
@@ -749,18 +749,17 @@ UnfoldingUtils::UnfoldChiSqMin(TVectorD &regWts, TString opt)
   }
   kbins[nRegWts] = 2*kbins[nRegWts-1]-kbins[nRegWts-2];
 
-  //  result.XRegHist = Matrix2Hist(result.XReg, XRegErr, Form("xregHist_%d",id), xbins, kbins);
-  result.XRegHist = new TH2D(Form("hChsq%d",id), Form("Minimum #chi^{2}_{reg} solutions"),
-                             fN, xbins, nRegWts, kbins);
+  result->XRegHist = new TH2D(Form("hChsq%d",id), Form("Minimum #chi^{2}_{reg} solutions"),
+                              fN, xbins, nRegWts, kbins);
 
-  result.XRegHist->GetXaxis()->CenterTitle();
-  result.XRegHist->GetYaxis()->CenterTitle();
-  result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
-  result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
-  result.XRegHist->SetTitle("GSVD solutions: x_{#lambda};x;#lambda");
+  result->XRegHist->GetXaxis()->CenterTitle();
+  result->XRegHist->GetYaxis()->CenterTitle();
+  result->XRegHist->GetXaxis()->SetTitleOffset(1.8);
+  result->XRegHist->GetYaxis()->SetTitleOffset(1.8);
+  result->XRegHist->SetTitle("GSVD solutions: x_{#lambda};x;#lambda");
 
-  result.LCurve = new TGraph();
-  result.LCurve->SetTitle("TMinuit L-Curve;Unregulated total #chi^{2};total curvature");
+  result->LCurve = new TGraph();
+  result->LCurve->SetTitle("TMinuit L-Curve;Unregulated total #chi^{2};total curvature");
 
   // Set up the chi^2 minimizer
   //  TFitterMinuit* min = new FitterMinuit();
@@ -813,12 +812,12 @@ UnfoldingUtils::UnfoldChiSqMin(TVectorD &regWts, TString opt)
       double err = val < 1 ? 1. : min->Errors()[j];
       w(j) = val;
 
-      result.XRegHist->SetBinContent(j+1,k+1,val);
-      result.XRegHist->SetBinError(j+1,k+1,err);
+      result->XRegHist->SetBinContent(j+1,k+1,val);
+      result->XRegHist->SetBinError(j+1,k+1,err);
 
     }
     fRegWeight = 0.;
-    result.LCurve->SetPoint(k, RegChi2(tmx), Curvature(w));
+    result->LCurve->SetPoint(k, RegChi2(tmx), Curvature(w));
   } // k loop
 
   return result;
@@ -856,12 +855,12 @@ UnfoldingUtils::RegularizedInverseResponse(GSVDResult *gsvd, double lambda)
   return Ap;
 }
 
-UnfoldingResult
+UnfoldingResult *
 UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult *gsvd,
                                    TVectorD &lambda,
                                    TString /*opt*/)
 {
-  UnfoldingResult result;
+  UnfoldingResult *result = new UnfoldingResult();
   static int id=0; id++; // So this fn. can be called more than once
 
   int nk = lambda.GetNrows();
@@ -870,34 +869,34 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult *gsvd,
   int p  = gsvd->p;
   TMatrixD WRegErr(n,nk);
   TMatrixD XRegErr(n,nk);
-  result.WReg.ResizeTo(n, nk);
-  result.XReg.ResizeTo(n, nk);
+  result->WReg.ResizeTo(n, nk);
+  result->XReg.ResizeTo(n, nk);
 
-  result.LCurve    = new TGraph(nk);
-  result.GcvCurve  = new TGraph(nk);
-  result.RhoCurve  = new TGraph(nk);
-  result.FilterSum = new TGraph(nk);
+  result->LCurve    = new TGraph(nk);
+  result->GcvCurve  = new TGraph(nk);
+  result->RhoCurve  = new TGraph(nk);
+  result->FilterSum = new TGraph(nk);
   TGraph *fsInv    = new TGraph(nk); // FilterSum w/ x,y swapped
 
 
-  result.hwCov = new TH3D(Form("hwCov_gsvd_%d", id),
-                          Form("hwCov_gsvd_%d", id),
-                          fN,fTrueX1,fTrueX2,
-                          fN,fTrueX1,fTrueX2,
-                          nk, lambda(0), lambda(nk-1));
-  result.hxCov = new TH3D(Form("hxCov_gsvd_%d", id),
-                          Form("hxCov_gsvd_%d", id),
-                          fN,fTrueX1,fTrueX2,
-                          fN,fTrueX1,fTrueX2,
-                          nk, lambda(0), lambda(nk-1));
+  result->hwCov = new TH3D(Form("hwCov_gsvd_%d", id),
+                           Form("hwCov_gsvd_%d", id),
+                           fN,fTrueX1,fTrueX2,
+                           fN,fTrueX1,fTrueX2,
+                           nk, lambda(0), lambda(nk-1));
+  result->hxCov = new TH3D(Form("hxCov_gsvd_%d", id),
+                           Form("hxCov_gsvd_%d", id),
+                           fN,fTrueX1,fTrueX2,
+                           fN,fTrueX1,fTrueX2,
+                           nk, lambda(0), lambda(nk-1));
 
-  result.lambdaGcv = 0;
+  result->lambdaGcv = 0;
   double gcvMin = 1e99;
-  result.lambdaRho = 0;
+  result->lambdaRho = 0;
   double rhoMin = 1e99;
-  result.lambdaLcv = 0;
-  result.kStf = 0;
-  result.lambdaStf = 0;
+  result->lambdaLcv = 0;
+  result->kStf = 0;
+  result->lambdaStf = 0;
 
   // Stuff for computing covariance
   TMatrixD B(gsvd->covb); // Error matrix of b
@@ -962,8 +961,8 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult *gsvd,
         double cw = covw(i,j);
         double cx = fVecXini(i) * cw * fVecXini(j);
         covx(i,j) = cx;
-        result.hwCov->SetBinContent(i+1,j+1,k+1,cw);
-        result.hxCov->SetBinContent(i+1,j+1,k+1,cx);
+        result->hwCov->SetBinContent(i+1,j+1,k+1,cw);
+        result->hxCov->SetBinContent(i+1,j+1,k+1,cx);
         if (i==j) WRegErr(j,k) = TMath::Sqrt(cw);
         if (i==j) XRegErr(j,k) = TMath::Sqrt(cx);
       }
@@ -972,8 +971,8 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult *gsvd,
     // Regularized solution
     for (int j=0; j<n; j++)
     {
-      result.WReg(j,k) = wreg(j);
-      result.XReg(j,k) = xreg(j);
+      result->WReg(j,k) = wreg(j);
+      result->XReg(j,k) = xreg(j);
     }
 
     // Parameter optimization analysis -------------------------------
@@ -1029,77 +1028,77 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult *gsvd,
     rhoMean = TMath::Sqrt(rhoMean);
     rho = rhoMean;
 
-    result.LCurve->SetPoint(k, rnorm, lxnorm);
-    result.GcvCurve->SetPoint(k, lambda(k), gcv);
-    result.RhoCurve->SetPoint(k, lambda(k), rhoMean);
-    result.FilterSum->SetPoint(k, lambda(k), fsum);
+    result->LCurve->SetPoint(k, rnorm, lxnorm);
+    result->GcvCurve->SetPoint(k, lambda(k), gcv);
+    result->RhoCurve->SetPoint(k, lambda(k), rhoMean);
+    result->FilterSum->SetPoint(k, lambda(k), fsum);
     fsInv->SetPoint(k, fsum, lambda(k));
 
     // if (fsum > nSignificantGSVDCoeffs) {
-    //   result.lambdaStf = lambda(k);
-    //   result.kStf = k;
+    //   result->lambdaStf = lambda(k);
+    //   result->kStf = k;
     // }
     if (gcv < gcvMin)
     {
       gcvMin = gcv;
-      result.lambdaGcv = lambda(k);
-      result.kGcv = k;
+      result->lambdaGcv = lambda(k);
+      result->kGcv = k;
     }
     if (rho < rhoMin)
     {
       rhoMin = rho;
-      result.lambdaRho = lambda(k);
-      result.kRho = k;
+      result->lambdaRho = lambda(k);
+      result->kRho = k;
     }
   }
 
-  result.lambdaStf = fsInv->Eval(double(nSignificantGSVDCoeffs));
-  result.kStf = TMath::BinarySearch(nk, result.FilterSum->GetX(),
-                                    result.lambdaStf);
+  result->lambdaStf = fsInv->Eval(double(nSignificantGSVDCoeffs));
+  result->kStf = TMath::BinarySearch(nk, result->FilterSum->GetX(),
+                                     result->lambdaStf);
 
-  // Assign result.Lcurvature and result.kLcv
-  result.LCurvature = LogCurvature(result.LCurve, lambda, result.kLcv);
-  result.lambdaLcv = lambda(result.kLcv);
+  // Assign result->Lcurvature and result->kLcv
+  result->LCurvature = LogCurvature(result->LCurve, lambda, result->kLcv);
+  result->lambdaLcv = lambda(result->kLcv);
 
-  int kg = result.kGcv+1;
-  result.RhoCurve->SetName("gsvd_rho");
-  result.RhoCurve->SetTitle("GSVD mean global correlation coefficients;"
-                            "#lambda;#LT#rho#GT");
-  result.LCurve->SetTitle("GSVD L-Curve;||Ax_{#lambda}-b||_{2};"
-                          "||Lx_{#lambda}||_{2}");
+  int kg = result->kGcv+1;
+  result->RhoCurve->SetName("gsvd_rho");
+  result->RhoCurve->SetTitle("GSVD mean global correlation coefficients;"
+                             "#lambda;#LT#rho#GT");
+  result->LCurve->SetTitle("GSVD L-Curve;||Ax_{#lambda}-b||_{2};"
+                           "||Lx_{#lambda}||_{2}");
 
-  result.LCurvature->SetName("gsvd_lcc");
-  result.LCurvature->SetTitle("GSVD L-Curve log curvature;#lambda;"
-                              "log curvature");
-  result.GcvCurve->SetNameTitle("gsvd_gcv","GSVD cross-validation curve;"
-                                "#lambda;G(#lambda)");
-  result.FilterSum->SetNameTitle("gsvd_fsum", "GSVD Tikhonov filter factor sum"
-                                 " (= effective NDF);#lambda;effective NDF");
+  result->LCurvature->SetName("gsvd_lcc");
+  result->LCurvature->SetTitle("GSVD L-Curve log curvature;#lambda;"
+                               "log curvature");
+  result->GcvCurve->SetNameTitle("gsvd_gcv","GSVD cross-validation curve;"
+                                 "#lambda;G(#lambda)");
+  result->FilterSum->SetNameTitle("gsvd_fsum", "GSVD Tikhonov filter factor sum"
+                                  " (= effective NDF);#lambda;effective NDF");
 
-  result.RhoCurve->GetXaxis()->CenterTitle();
-  result.RhoCurve->GetYaxis()->CenterTitle();
-  result.RhoCurve->GetXaxis()->SetTitleOffset(1.3);
-  result.RhoCurve->GetYaxis()->SetTitleOffset(1.3);
+  result->RhoCurve->GetXaxis()->CenterTitle();
+  result->RhoCurve->GetYaxis()->CenterTitle();
+  result->RhoCurve->GetXaxis()->SetTitleOffset(1.3);
+  result->RhoCurve->GetYaxis()->SetTitleOffset(1.3);
 
-  result.LCurve->GetXaxis()->CenterTitle();
-  result.LCurve->GetYaxis()->CenterTitle();
-  result.LCurve->GetXaxis()->SetTitleOffset(1.3);
-  result.LCurve->GetYaxis()->SetTitleOffset(1.3);
+  result->LCurve->GetXaxis()->CenterTitle();
+  result->LCurve->GetYaxis()->CenterTitle();
+  result->LCurve->GetXaxis()->SetTitleOffset(1.3);
+  result->LCurve->GetYaxis()->SetTitleOffset(1.3);
 
-  result.LCurvature->GetXaxis()->CenterTitle();
-  result.LCurvature->GetYaxis()->CenterTitle();
-  result.LCurvature->GetXaxis()->SetTitleOffset(1.3);
-  result.LCurvature->GetYaxis()->SetTitleOffset(1.3);
+  result->LCurvature->GetXaxis()->CenterTitle();
+  result->LCurvature->GetYaxis()->CenterTitle();
+  result->LCurvature->GetXaxis()->SetTitleOffset(1.3);
+  result->LCurvature->GetYaxis()->SetTitleOffset(1.3);
 
-  result.GcvCurve->GetXaxis()->CenterTitle();
-  result.GcvCurve->GetYaxis()->CenterTitle();
-  result.GcvCurve->GetXaxis()->SetTitleOffset(1.3);
-  result.GcvCurve->GetYaxis()->SetTitleOffset(1.3);
+  result->GcvCurve->GetXaxis()->CenterTitle();
+  result->GcvCurve->GetYaxis()->CenterTitle();
+  result->GcvCurve->GetXaxis()->SetTitleOffset(1.3);
+  result->GcvCurve->GetYaxis()->SetTitleOffset(1.3);
 
-  result.FilterSum->GetXaxis()->CenterTitle();
-  result.FilterSum->GetYaxis()->CenterTitle();
-  result.FilterSum->GetXaxis()->SetTitleOffset(1.3);
-  result.FilterSum->GetYaxis()->SetTitleOffset(1.3);
+  result->FilterSum->GetXaxis()->CenterTitle();
+  result->FilterSum->GetYaxis()->CenterTitle();
+  result->FilterSum->GetXaxis()->SetTitleOffset(1.3);
+  result->FilterSum->GetYaxis()->SetTitleOffset(1.3);
 
   double kbins[nk+1], xbins[fN+1];
   for (int j=0; j<=fN; j++)
@@ -1112,38 +1111,38 @@ UnfoldingUtils::UnfoldTikhonovGSVD(GSVDResult *gsvd,
   }
   kbins[nk] = 2*kbins[nk-1]-kbins[nk-2];
 
-  result.WRegHist = Matrix2Hist(result.WReg, WRegErr, 
-                                Form("wregHist_%d",id), xbins, kbins);
-  result.WRegHist->GetXaxis()->CenterTitle();
-  result.WRegHist->GetYaxis()->CenterTitle();
-  result.WRegHist->GetXaxis()->SetTitleOffset(1.8);
-  result.WRegHist->GetYaxis()->SetTitleOffset(1.8);
-  result.WRegHist->SetTitle("GSVD solutions: w_{#lambda};w;#lambda");
+  result->WRegHist = Matrix2Hist(result->WReg, WRegErr,
+                                 Form("wregHist_%d",id), xbins, kbins);
+  result->WRegHist->GetXaxis()->CenterTitle();
+  result->WRegHist->GetYaxis()->CenterTitle();
+  result->WRegHist->GetXaxis()->SetTitleOffset(1.8);
+  result->WRegHist->GetYaxis()->SetTitleOffset(1.8);
+  result->WRegHist->SetTitle("GSVD solutions: w_{#lambda};w;#lambda");
 
 
-  result.XRegHist = Matrix2Hist(result.XReg, XRegErr, 
-                                Form("xregHist_%d",id), xbins, kbins);
-  result.XRegHist->GetXaxis()->CenterTitle();
-  result.XRegHist->GetYaxis()->CenterTitle();
-  result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
-  result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
-  result.XRegHist->SetTitle("GSVD solutions: x_{#lambda};x;#lambda");
+  result->XRegHist = Matrix2Hist(result->XReg, XRegErr,
+                                 Form("xregHist_%d",id), xbins, kbins);
+  result->XRegHist->GetXaxis()->CenterTitle();
+  result->XRegHist->GetYaxis()->CenterTitle();
+  result->XRegHist->GetXaxis()->SetTitleOffset(1.8);
+  result->XRegHist->GetYaxis()->SetTitleOffset(1.8);
+  result->XRegHist->SetTitle("GSVD solutions: x_{#lambda};x;#lambda");
 
-  int kr = result.kRho+1;
-  int kl = result.kLcv+1;
-  int ks = result.kStf+1;
+  int kr = result->kRho+1;
+  int kl = result->kLcv+1;
+  int ks = result->kStf+1;
 
-  result.hGcv =
-    result.XRegHist->ProjectionX(Form("gsvd_%d_gcv_bin%d",id,kg),kg,kg);
+  result->hGcv =
+    result->XRegHist->ProjectionX(Form("gsvd_%d_gcv_bin%d",id,kg),kg,kg);
 
-  result.hRho =
-    result.XRegHist->ProjectionX(Form("gsvd_%d_rho_bin%d",id,kr),kr,kr);
+  result->hRho =
+    result->XRegHist->ProjectionX(Form("gsvd_%d_rho_bin%d",id,kr),kr,kr);
 
-  result.hLcv =
-    result.XRegHist->ProjectionX(Form("gsvd_%d_lcv_bin%d",id,kl),kl,kl);
+  result->hLcv =
+    result->XRegHist->ProjectionX(Form("gsvd_%d_lcv_bin%d",id,kl),kl,kl);
 
-  result.hStf =
-    result.XRegHist->ProjectionX(Form("gsvd_%d_stf_bin%d",id,ks),ks,ks);
+  result->hStf =
+    result->XRegHist->ProjectionX(Form("gsvd_%d_stf_bin%d",id,ks),ks,ks);
 
   return result;
 }
@@ -1269,16 +1268,16 @@ UnfoldingUtils::UnfoldSVD(double lambda,
   if (output)
   {
     TH1D *hs = Vec2Hist(s_vec, 0., nd, Form("hs%d",id), "s_{i} ");
-    TH1D *hd = Vec2Hist(absd,  0., nd, Form("hd%d",id), 
+    TH1D *hd = Vec2Hist(absd,  0., nd, Form("hd%d",id),
                         Form("#||{d_{i}} = #||{(U^{T}b)_{i}}"));
-    TH1D *hl = Vec2Hist(dlam,  0., nd, Form("hl%d",id), 
+    TH1D *hl = Vec2Hist(dlam,  0., nd, Form("hl%d",id),
                         Form("#||{d^{(#lambda)}_{i}}, #lambda = %g ",lambda));
-    TH1D *hw = Vec2Hist(w,     0., nd, Form("hw%d",id), 
+    TH1D *hw = Vec2Hist(w,     0., nd, Form("hw%d",id),
                         Form("w^{#lambda = %g} ",lambda));
-    TH1D *ht = Vec2Hist(tf,    0., nd, Form("ht%d",id), 
+    TH1D *ht = Vec2Hist(tf,    0., nd, Form("ht%d",id),
                         Form("s_{i}^{2}/(s_{i}^{2}+#lambda^{2}), #lambda = %g ",
                              lambda));
-    TH1D *hr = Vec2Hist(resid, 0., nd, Form("hr%d",id), 
+    TH1D *hr = Vec2Hist(resid, 0., nd, Form("hr%d",id),
                         Form("Ax^{(#lambda)}-b, #lambda = %g ",lambda));
 
     SetTH1Props(hs, kBlack, 0, kBlack, kFullCircle, 1.0);
@@ -1354,7 +1353,7 @@ UnfoldingUtils::UnfoldTLS()
   return h;
 }
 
-UnfoldingResult
+UnfoldingResult *
 UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations)
 {
   // See eq. 2.11, J. Bardsley & J. Nagy,
@@ -1362,21 +1361,21 @@ UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations)
   // Also
   // SIAM J. SCI. COMPUT. Vol. 25, No. 4, pp. 1326–1343
 
-  UnfoldingResult result;
+  UnfoldingResult *result = new UnfoldingResult();
   static int id = 0; id++;       // Unique ID
 
-  result.LCurve = new TGraph(nIterations);
-  result.GcvCurve = new TGraph(nIterations);
-  result.LCurve->SetNameTitle(Form("LCurve_RL_%d",id),
-                              Form("Richardson-Lucy L-Curve;"
-                                   "Total #chi^{2};"
-                                   "Total curvature of x_{k}"));
+  result->LCurve = new TGraph(nIterations);
+  result->GcvCurve = new TGraph(nIterations);
+  result->LCurve->SetNameTitle(Form("LCurve_RL_%d",id),
+                               Form("Richardson-Lucy L-Curve;"
+                                    "Total #chi^{2};"
+                                    "Total curvature of x_{k}"));
   TMatrixD A = GetA();
   TVectorD b = Getb();
   TVectorD ones = Ones(fM);
 
-  result.XReg.ResizeTo(fN, nIterations);
-  result.WReg.ResizeTo(fN, nIterations);
+  result->XReg.ResizeTo(fN, nIterations);
+  result->WReg.ResizeTo(fN, nIterations);
 
   // Prior vector x0 must be positive
   TVectorD x0 = Ones(fN);
@@ -1402,7 +1401,7 @@ UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations)
   for (int i=0; i<fM; i++)
     bvar(i) = fMatB(i,i);
 
-  result.kLcv = 0;
+  result->kLcv = 0;
   TVectorD kIter(nIterations);
 
   for (int k=0; k<nIterations; k++)
@@ -1415,44 +1414,44 @@ UnfoldingUtils::UnfoldRichardsonLucy(const int nIterations)
     x = ElemMult(xd, AT*ElemDiv(b+bvar, A*x + bkg + bvar));
     for (int j=0; j<fN; j++)
     {
-      result.WReg(j,k) = x(j);
-      result.XReg(j,k) = x(j)*fVecXini(j);
+      result->WReg(j,k) = x(j);
+      result->XReg(j,k) = x(j)*fVecXini(j);
     }
 
     // L-Curve
     TVectorD r = A*x-b;
     TVectorD chi2vec = ElemDiv(ElemMult(r,r), bvar);
-    result.LCurve->SetPoint(k,chi2vec.Sum(),Curvature(x));
+    result->LCurve->SetPoint(k,chi2vec.Sum(),Curvature(x));
 
   } // end iteration loop
   cout << endl;
 
-  // Assign result.Lcurvature and result.kLcv
-  result.LCurvature = LogCurvature(result.LCurve, kIter, result.kLcv);
-  result.LCurvature->GetXaxis()->CenterTitle();
-  result.LCurvature->GetYaxis()->CenterTitle();
-  result.LCurvature->GetXaxis()->SetTitleOffset(1.3);
-  result.LCurvature->GetYaxis()->SetTitleOffset(1.3);
-  result.lambdaLcv = result.kLcv; // Here, "lambda" is the iteration.
+  // Assign result->Lcurvature and result->kLcv
+  result->LCurvature = LogCurvature(result->LCurve, kIter, result->kLcv);
+  result->LCurvature->GetXaxis()->CenterTitle();
+  result->LCurvature->GetYaxis()->CenterTitle();
+  result->LCurvature->GetXaxis()->SetTitleOffset(1.3);
+  result->LCurvature->GetYaxis()->SetTitleOffset(1.3);
+  result->lambdaLcv = result->kLcv; // Here, "lambda" is the iteration.
 
-  result.WRegHist = Matrix2Hist(result.WReg, Form("W_RL_%d",id),
-                                fTrueX1,fTrueX2,0,nIterations);
-  result.WRegHist->GetXaxis()->CenterTitle();
-  result.WRegHist->GetYaxis()->CenterTitle();
-  result.WRegHist->GetXaxis()->SetTitleOffset(1.8);
-  result.WRegHist->GetYaxis()->SetTitleOffset(1.8);
+  result->WRegHist = Matrix2Hist(result->WReg, Form("W_RL_%d",id),
+                                 fTrueX1,fTrueX2,0,nIterations);
+  result->WRegHist->GetXaxis()->CenterTitle();
+  result->WRegHist->GetYaxis()->CenterTitle();
+  result->WRegHist->GetXaxis()->SetTitleOffset(1.8);
+  result->WRegHist->GetYaxis()->SetTitleOffset(1.8);
 
-  result.XRegHist = Matrix2Hist(result.XReg, Form("X_RL_%d",id),
-                                fTrueX1,fTrueX2,0,nIterations);
-  result.XRegHist->GetXaxis()->CenterTitle();
-  result.XRegHist->GetYaxis()->CenterTitle();
-  result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
-  result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
+  result->XRegHist = Matrix2Hist(result->XReg, Form("X_RL_%d",id),
+                                 fTrueX1,fTrueX2,0,nIterations);
+  result->XRegHist->GetXaxis()->CenterTitle();
+  result->XRegHist->GetYaxis()->CenterTitle();
+  result->XRegHist->GetXaxis()->SetTitleOffset(1.8);
+  result->XRegHist->GetYaxis()->SetTitleOffset(1.8);
 
   return result;
 }
 
-UnfoldingResult
+UnfoldingResult *
 UnfoldingUtils::UnfoldPCGLS(const int nIterations,
                             int ltype,
                             TString opt,
@@ -1471,7 +1470,7 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
                      hXini);
 }
 
-UnfoldingResult
+UnfoldingResult *
 UnfoldingUtils::UnfoldPCGLS(const int nIterations,
                             TMatrixD &L,
                             TString opt,
@@ -1497,7 +1496,7 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
   // 6.3.
   //
 
-  UnfoldingResult result;
+  UnfoldingResult *result = new UnfoldingResult();
   static int id = 0; id++;       // Unique ID
 
   TMatrixD A = GetA(opt);
@@ -1521,29 +1520,29 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
     B.UnitMatrix();
 
   // Columns are filter factors at iteration k
-  result.F.ResizeTo(fN,nIterations);
+  result->F.ResizeTo(fN,nIterations);
   TVectorD Fd(fN);
-  TVectorD fk(fN); // column k of result.F
+  TVectorD fk(fN); // column k of result->F
   double gcvMin = 1e99;
 
-  result.WReg.ResizeTo(fN,nIterations);
-  result.XReg.ResizeTo(fN,nIterations);
-  result.WRegErr.ResizeTo(fN,nIterations);
-  result.XRegErr.ResizeTo(fN,nIterations);
-  result.wCov.ResizeTo(fN,fN);
-  result.xCov.ResizeTo(fN,fN);
+  result->WReg.ResizeTo(fN,nIterations);
+  result->XReg.ResizeTo(fN,nIterations);
+  result->WRegErr.ResizeTo(fN,nIterations);
+  result->XRegErr.ResizeTo(fN,nIterations);
+  result->wCov.ResizeTo(fN,fN);
+  result->xCov.ResizeTo(fN,fN);
 
-  result.LCurve = new TGraph(nIterations);
-  result.GcvCurve = new TGraph(nIterations);
+  result->LCurve = new TGraph(nIterations);
+  result->GcvCurve = new TGraph(nIterations);
 
-  result.LCurve->SetNameTitle(Form("LCurve_PCGLS_%d",id),
-                              Form("PCGLS L-Curve;"
-                                   "Residual norm ||Ax_{k}-b||_{2};"
-                                   "Solution norm ||Lx_{k}||_{2}"));
-  result.GcvCurve->SetNameTitle(Form("GcvCurve_PCGLS_%d",id),
-                                Form("PCGLS GCV Curve;"
-                                     "Iteration k;"
-                                     "G(k)"));
+  result->LCurve->SetNameTitle(Form("LCurve_PCGLS_%d",id),
+                               Form("PCGLS L-Curve;"
+                                    "Residual norm ||Ax_{k}-b||_{2};"
+                                    "Solution norm ||Lx_{k}||_{2}"));
+  result->GcvCurve->SetNameTitle(Form("GcvCurve_PCGLS_%d",id),
+                                 Form("PCGLS GCV Curve;"
+                                      "Iteration k;"
+                                      "G(k)"));
 
   // Store q1 vectors as columns of Q1n for re-orthogonalization
   TMatrixD Q1n(p, nIterations+1);
@@ -1607,14 +1606,14 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
 
     // Results
     for (int j=0; j<fN; j++)
-      result.WReg(j,k-1) = x(j);
+      result->WReg(j,k-1) = x(j);
     for (int j=0; j<fN; j++)
-      result.XReg(j,k-1) = x(j)*xini(j);
+      result->XReg(j,k-1) = x(j)*xini(j);
 
     // Parameter optimization analysis -------------------------------
 
     // L-Curve
-    result.LCurve->SetPoint(k-1, TMath::Sqrt(r*r), TMath::Sqrt((L*x)*(L*x)));
+    result->LCurve->SetPoint(k-1, TMath::Sqrt(r*r), TMath::Sqrt((L*x)*(L*x)));
 
     // Filter factors (if GSVD gamma values available)
     if (gsvd)
@@ -1624,38 +1623,38 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
       {
         fk = alpha*g2;
         Fd = g2 - ElemMult(g2, fk) + beta*g2;
-        TMatrixDColumn(result.F, k-1) = fk;
+        TMatrixDColumn(result->F, k-1) = fk;
       }
       else
       {
         fk += alpha*Fd;
         Fd = g2 - ElemMult(g2, fk) + beta*Fd;
-        TMatrixDColumn(result.F, k-1) = fk;
+        TMatrixDColumn(result->F, k-1) = fk;
       }
       if (k > 2)
       {
         for (int i=0; i<fN; i++)
         {
-          if (TMath::Abs(result.F(i,k-2)-1) < 1e-4)
-            result.F(i,k-1) = 1.0;
-          if (TMath::Abs(result.F(i,k-3)-1) < 1e-4)
-            result.F(i,k-1) = 1.0;
+          if (TMath::Abs(result->F(i,k-2)-1) < 1e-4)
+            result->F(i,k-1) = 1.0;
+          if (TMath::Abs(result->F(i,k-3)-1) < 1e-4)
+            result->F(i,k-1) = 1.0;
 
-          if (result.F(i,k-1) > 1.)
-            result.F(i,k-1) = 1.0;
+          if (result->F(i,k-1) > 1.)
+            result->F(i,k-1) = 1.0;
 
-          fk(i) = result.F(i,k-1);
+          fk(i) = result->F(i,k-1);
         }
       }
 
       // Generalized cross-validation curve
       TVectorD resid = A*x - b;
       double gcv = TMath::Sqrt(resid*resid) / (fM - fk.Sum());
-      result.GcvCurve->SetPoint(k-1, k, gcv);
+      result->GcvCurve->SetPoint(k-1, k, gcv);
       if (gcv < gcvMin)
       {
         gcvMin = gcv;
-        result.kGcv = k;
+        result->kGcv = k;
       }
 
       // Compute A^#, the regularized inverse of A, using these filter
@@ -1665,27 +1664,27 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
       for (int i=0; i<fN; i++)
       {
         double a = gsvd->alpha(i);
-        FCd(i,i) = (a > 0.) ? result.F(i,k-1)/a : 0.;
+        FCd(i,i) = (a > 0.) ? result->F(i,k-1)/a : 0.;
       }
       TMatrixD Ap = gsvd->X * FCd * UT;
 
       // Covariance matrices:
       // Cov(w) = Ap*B*Ap'
       // Cov(x)_ik = xini_i Cov(w)_ik xini_k
-      result.wCov = Ap * TMatrixD(B, TMatrixD::kMultTranspose, Ap);
+      result->wCov = Ap * TMatrixD(B, TMatrixD::kMultTranspose, Ap);
       for (int i=0; i<fN; i++)
       {
         for (int j=0; j<fN; j++)
         {
-          result.xCov(i,j) = fVecXini(i) * result.wCov(i,j) * fVecXini(j);
+          result->xCov(i,j) = fVecXini(i) * result->wCov(i,j) * fVecXini(j);
         }
       }
 
       // Assign uncertainty
       for (int j=0; j<fN; j++)
-        result.WRegErr(j,k-1) = result.wCov(j,j);
+        result->WRegErr(j,k-1) = result->wCov(j,j);
       for (int j=0; j<fN; j++)
-        result.XRegErr(j,k-1) = result.xCov(j,j);
+        result->XRegErr(j,k-1) = result->xCov(j,j);
 
     }
 
@@ -1694,42 +1693,42 @@ UnfoldingUtils::UnfoldPCGLS(const int nIterations,
   cout << endl;
 
   // Solutions to Atilde*w = btilde
-  result.WRegHist = Matrix2Hist(result.WReg, Form("W_CG_%d",id),
-                                fTrueX1, fTrueX2,0,nIterations);
-  result.WRegHist->GetXaxis()->CenterTitle();
-  result.WRegHist->GetYaxis()->CenterTitle();
-  result.WRegHist->GetXaxis()->SetTitleOffset(1.8);
-  result.WRegHist->GetYaxis()->SetTitleOffset(1.8);
-  result.WRegHist->SetTitle("CGLS solutions w_{k};w;iteration k");
+  result->WRegHist = Matrix2Hist(result->WReg, Form("W_CG_%d",id),
+                                 fTrueX1, fTrueX2,0,nIterations);
+  result->WRegHist->GetXaxis()->CenterTitle();
+  result->WRegHist->GetYaxis()->CenterTitle();
+  result->WRegHist->GetXaxis()->SetTitleOffset(1.8);
+  result->WRegHist->GetYaxis()->SetTitleOffset(1.8);
+  result->WRegHist->SetTitle("CGLS solutions w_{k};w;iteration k");
 
   // Solutions x_j = w_j * xini_j
-  result.XRegHist = Matrix2Hist(result.XReg, Form("X_CG_%d",id),
-                                fTrueX1, fTrueX2,0,nIterations);
-  result.XRegHist->GetXaxis()->CenterTitle();
-  result.XRegHist->GetYaxis()->CenterTitle();
-  result.XRegHist->GetXaxis()->SetTitleOffset(1.8);
-  result.XRegHist->GetYaxis()->SetTitleOffset(1.8);
+  result->XRegHist = Matrix2Hist(result->XReg, Form("X_CG_%d",id),
+                                 fTrueX1, fTrueX2,0,nIterations);
+  result->XRegHist->GetXaxis()->CenterTitle();
+  result->XRegHist->GetYaxis()->CenterTitle();
+  result->XRegHist->GetXaxis()->SetTitleOffset(1.8);
+  result->XRegHist->GetYaxis()->SetTitleOffset(1.8);
 
-  result.XRegHist->SetTitle("CGLS solutions x_{k};x;iteration k");
+  result->XRegHist->SetTitle("CGLS solutions x_{k};x;iteration k");
 
   // Add uncertainties
-  TH2D *errw = Matrix2Hist(result.WRegErr, Form("errW_CG_%d",id),
+  TH2D *errw = Matrix2Hist(result->WRegErr, Form("errW_CG_%d",id),
                            fTrueX1, fTrueX2,0,nIterations);
-  TH2D *errx = Matrix2Hist(result.XRegErr, Form("errX_CG_%d",id),
+  TH2D *errx = Matrix2Hist(result->XRegErr, Form("errX_CG_%d",id),
                            fTrueX1, fTrueX2,0,nIterations);
 
   for (int j=1; j<=fN; j++)
   {
     for (int k=1; k<nIterations; k++)
     {
-      result.WRegHist->SetBinError(j,k,errw->GetBinContent(j,k));
-      result.XRegHist->SetBinError(j,k,errx->GetBinContent(j,k));
+      result->WRegHist->SetBinError(j,k,errw->GetBinContent(j,k));
+      result->XRegHist->SetBinError(j,k,errx->GetBinContent(j,k));
     }
   }
 
-  result.hGcv =
-    result.XRegHist->ProjectionX(Form("cg_%d_iter%d",id,result.kGcv),
-                                 result.kGcv,result.kGcv);
+  result->hGcv =
+    result->XRegHist->ProjectionX(Form("cg_%d_iter%d",id,result->kGcv),
+                                  result->kGcv,result->kGcv);
 
   return result;
 }
@@ -1964,7 +1963,7 @@ UnfoldingUtils::UnfoldCovMatrix(int nTrials,
                                 TString opt,
                                 TObjArray *bHists)
 {
-  // Propagate the measured data cov matrix to the unfolded result.
+  // Propagate the measured data cov matrix to the unfolded result->
   static int id=0; id++;
 
   if (bHists && nTrials > bHists->GetEntries())
@@ -2128,19 +2127,50 @@ UnfoldingUtils::UnfoldCovMatrix(int nTrials,
 // -------------------------------------------------------------------
 // ----------------------- Support classes ---------------------------
 // -------------------------------------------------------------------
+SVDResult::SVDResult() :
+  sigma(0),           // Singular value spectrum.
+  UTb(0),             // Left sing. vectors * b.
+  UTbAbs(0),          // |U'*b| (mainly for plotting)
+  coeff(0),           // SV coefficients uTb/sigma
+  U(0)                // Left sing. vectors
+{}
 
 GSVDResult::GSVDResult() :
-  n(0),                 // Column count of A (or L)
-  m(0),                 // Row count of A
-  p(0),                 // Row count of L
-  lambda(0.0),         // Regularization parameter used
+  n(0),               // Column count of A (or L)
+  m(0),               // Row count of A
+  p(0),               // Row count of L
+  lambda(0.0),        // Regularization parameter used
   UHist(0),           // Left sing. vectors
-  XHist(0),          // GSVD basis vectors
+  XHist(0),           // GSVD basis vectors
   wregHist(0),        // scaled result w^lambda
   xregHist(0),        // xini_j * w^lambda_j (solution)
   bregHist(0),        // Refolded distribution A*xreg
   UTbAbs(0),          // Vector of |U'_i*b| values
   coeffAbs(0),        // Vector of |U'_i*b|/alpha_i values
-  regcAbs(0)         // Regularized (filtered) coeffs.
-{
-}
+  regcAbs(0)          // Regularized (filtered) coeffs.
+{}
+
+UnfoldingResult::UnfoldingResult() :
+  hwCov(0),
+  hxCov(0),
+  WRegHist(0),
+  XRegHist(0),
+  LCurve(0),
+  FilterSum(0),
+  lambdaStf(0),
+  kStf(0),
+  hStf(0),
+  LCurvature(0),
+  lambdaLcv(0),
+  kLcv(0),
+  hLcv(0),
+  GcvCurve(0),
+  lambdaGcv(0),
+  kGcv(0),
+  hGcv(0),
+  RhoCurve(0),
+  lambdaRho(0),
+  kRho(0),
+  hRho(0)
+{}
+
